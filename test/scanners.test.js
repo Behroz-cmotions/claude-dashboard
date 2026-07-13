@@ -270,6 +270,68 @@ test('scanPlan throws a clear error without credentials or on API failure', asyn
   await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
 });
 
+test('scanRecentFiles collects file_path from Write/Edit tool calls, newest first', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--demo');
+  fs.mkdirSync(projDir, { recursive: true });
+  const real = path.join(dir, 'bestaat.txt');
+  fs.writeFileSync(real, 'x');
+  const mk = (tool, file, ts) => JSON.stringify({
+    type: 'assistant', timestamp: ts,
+    message: { content: [{ type: 'tool_use', name: tool, input: { file_path: file } }] },
+  });
+  fs.writeFileSync(path.join(projDir, 's1.jsonl'), [
+    mk('Write', real, '2026-07-13T10:00:00Z'),
+    mk('Read', 'C:\\genegeerd.txt', '2026-07-13T10:00:01Z'),
+    mk('Edit', 'C:\\weg.txt', '2026-07-13T10:00:02Z'),
+    mk('Write', real, '2026-07-13T10:00:03Z'),
+  ].join('\n'));
+  const out = scanners.scanRecentFiles(dir, 10);
+  assert.strictEqual(out.length, 2, 'alleen unieke Write/Edit-paden');
+  assert.strictEqual(out[0].path, real, 'nieuwste eerst (laatste Write wint)');
+  assert.strictEqual(out[0].tool, 'Write');
+  assert.strictEqual(out[0].exists, true);
+  assert.strictEqual(out[1].path, 'C:\\weg.txt');
+  assert.strictEqual(out[1].exists, false);
+});
+
+test('scanWaiting reports the pending question and options for waiting sessions', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--demo');
+  fs.mkdirSync(projDir, { recursive: true });
+  fs.writeFileSync(path.join(projDir, 'w1.jsonl'), [
+    JSON.stringify({ type: 'assistant', timestamp: '2026-07-13T10:00:00Z', message: { content: [{ type: 'text', text: 'Even checken.' }] } }),
+    JSON.stringify({
+      type: 'assistant', timestamp: '2026-07-13T10:00:05Z',
+      message: { content: [{ type: 'tool_use', name: 'AskUserQuestion', input: {
+        questions: [{ question: 'Mergen naar master?', options: [{ label: 'Ja' }, { label: 'Nee' }] }],
+      } }] },
+    }),
+  ].join('\n'));
+  const sessions = [
+    { sessionId: 'w1', name: 'wachtende-sessie', status: 'waiting' },
+    { sessionId: 'x9', name: 'druk', status: 'busy' },
+  ];
+  const out = scanners.scanWaiting(dir, sessions);
+  assert.strictEqual(out.length, 1, 'alleen waiting-sessies');
+  assert.strictEqual(out[0].sessionId, 'w1');
+  assert.strictEqual(out[0].question, 'Mergen naar master?');
+  assert.deepStrictEqual(out[0].options, ['Ja', 'Nee']);
+});
+
+test('scanWaiting falls back to the last assistant text when there is no question tool', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--demo');
+  fs.mkdirSync(projDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projDir, 'w2.jsonl'),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-07-13T10:00:00Z', message: { content: [{ type: 'text', text: 'Mag ik doorgaan?' }] } })
+  );
+  const out = scanners.scanWaiting(dir, [{ sessionId: 'w2', name: 's', status: 'waiting' }]);
+  assert.strictEqual(out[0].question, 'Mag ik doorgaan?');
+  assert.deepStrictEqual(out[0].options, []);
+});
+
 test('scanHistory returns newest entries first, limited', () => {
   const dir = makeClaudeDir();
   const lines = [];

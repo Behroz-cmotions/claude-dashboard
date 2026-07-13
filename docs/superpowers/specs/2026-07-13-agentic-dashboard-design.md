@@ -120,7 +120,7 @@ Op basis van `ideeen/md`. Het dashboard gaat van read-only naar **read-write met
 
 ## Nieuwe/uitgebreide scanners
 
-- `scanRecentFiles(claudeDir, limit)` — recent door Claude aangemaakte/gewijzigde bestanden uit `~/.claude/file-history` (submappen per sessie, versies als `<hash>@vN`), met pad, sessie en tijdstip. Gesorteerd op recentheid.
+- `scanRecentFiles(claudeDir, projects, limit)` — recent door Claude aangemaakte/gewijzigde bestanden, uit de `Write`/`Edit`/`NotebookEdit`-tool-calls in de recentste transcripts (`message.content[].input.file_path`). `~/.claude/file-history` valt af: dat slaat inhoud-snapshots op onder gehashte namen, zonder het originele pad. Per uniek pad: pad, tool, tijdstip, of het bestand nog bestaat. Nieuwste eerst.
 - `scanWaiting(claudeDir, sessions)` — sessies met status `waiting`; haalt uit het transcript de laatste openstaande vraag (`AskUserQuestion`-input of de laatste assistent-tekst) en de aangeboden opties.
 - Bestaande scanners krijgen een `path`-veld (agents, skills, loops) en hooks een `source`-pad, zodat viewer/editor en verwijderen weten welk bestand ze raken. Scope (globaal/project) was er al en wordt prominenter getoond.
 

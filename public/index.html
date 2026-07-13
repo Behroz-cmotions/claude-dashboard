@@ -126,6 +126,64 @@
   .mreset { font: 400 10.5px var(--mono); color: var(--ink-3); margin-top: 3px; }
   .spend { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
 
+  /* ── Acties, modal, waiting ────────────────────────────── */
+  .acts { display: flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
+  .act {
+    background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+    color: var(--ink-3); font: 400 11px var(--mono); padding: 2px 6px; line-height: 1.5;
+  }
+  .act:hover { color: var(--ink); background: var(--inset); border-color: var(--line); }
+  .act.danger:hover { color: var(--err); border-color: var(--err); }
+  .act:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+  tr:hover .act { color: var(--ink-2); }
+
+  dialog {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+    padding: 0; width: min(900px, 92vw); max-height: 86vh;
+  }
+  dialog::backdrop { background: rgba(6, 8, 12, .74); }
+  .dlg-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .dlg-head .t { font: 600 12px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--ink-2); }
+  .dlg-head .p { font: 400 11px var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .dlg-body { padding: 14px 16px; overflow: auto; max-height: 62vh; }
+  .dlg-body textarea {
+    width: 100%; min-height: 46vh; resize: vertical; tab-size: 2;
+    background: var(--inset); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; font: 400 12.5px/1.6 var(--mono);
+  }
+  .dlg-body textarea:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+  .dlg-foot { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--line); }
+  .dlg-foot .msg { flex: 1; font: 400 12px var(--mono); color: var(--ink-3); }
+  .dlg-foot .msg.ok { color: var(--nominal); }
+  .dlg-foot .msg.bad { color: var(--err); }
+  .btn {
+    background: var(--inset); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 14px; cursor: pointer; font: 500 12.5px var(--sans);
+  }
+  .btn:hover { border-color: var(--ink-3); }
+  .btn.primary { background: var(--data); border-color: var(--data); color: #0A0D14; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger { color: var(--err); border-color: var(--err); background: transparent; }
+  .btn.danger:hover { background: color-mix(in srgb, var(--err) 16%, transparent); }
+  .btn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+  .confirm-text { font-size: 13.5px; line-height: 1.6; }
+  .confirm-text code { font: 400 12px var(--mono); background: var(--inset); padding: 1px 6px; border-radius: 4px; color: var(--ink); }
+
+  #p-waiting { border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
+  #p-waiting h2::before { color: var(--signal); }
+  .wait-item { padding: 8px 0; border-top: 1px solid var(--line); }
+  .wait-item:first-child { border-top: none; padding-top: 0; }
+  .wait-q { font-size: 13.5px; margin: 4px 0 7px; }
+  .wait-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--inset); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 16px; font: 400 13px var(--sans); color: var(--ink); z-index: 60;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55); display: none;
+  }
+  .toast.bad { border-color: var(--err); color: var(--err); }
+
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) {
     .pill .dot, #conn .beacon { animation: none !important; }
@@ -150,6 +208,7 @@
   <section class="zone">
     <div class="zone-label">Nu</div>
     <div class="grid g-now">
+      <div class="panel" id="p-waiting" hidden><h2>Wacht op jou <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-plan"><h2>Plan &amp; limieten <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-sessions"><h2>Sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-activity"><h2>Live activiteit <span class="count"></span></h2><div class="body"></div></div>
@@ -177,6 +236,7 @@
       <div class="panel" id="p-skills"><h2>Skills &amp; plugins <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-mcp"><h2>MCP-servers <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-recent"><h2>Recente bestanden <span class="count"></span></h2><div class="body"></div></div>
     </div>
   </section>
 
@@ -190,7 +250,33 @@
 </main>
 <div id="tooltip"></div>
 
+<dialog id="viewer">
+  <div class="dlg-head">
+    <span class="t" id="v-kind">bestand</span>
+    <span class="p" id="v-path"></span>
+  </div>
+  <div class="dlg-body"><textarea id="v-content" spellcheck="false"></textarea></div>
+  <div class="dlg-foot">
+    <span class="msg" id="v-msg"></span>
+    <button class="btn" id="v-close">Sluiten</button>
+    <button class="btn primary" id="v-save">Opslaan</button>
+  </div>
+</dialog>
+
+<dialog id="confirm">
+  <div class="dlg-head"><span class="t" id="c-title">bevestigen</span></div>
+  <div class="dlg-body"><div class="confirm-text" id="c-text"></div></div>
+  <div class="dlg-foot">
+    <span class="msg"></span>
+    <button class="btn" id="c-cancel">Annuleren</button>
+    <button class="btn danger" id="c-ok">Bevestigen</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
 <script>
+const ACTION_TOKEN = '__ACTION_TOKEN__';
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -225,6 +311,119 @@ function panel(id, section, render) {
   body.innerHTML = (Array.isArray(data) && !data.length) ? '<div class="empty">geen items</div>' : render(data);
 }
 
+/* ── acties ────────────────────────────────────────────── */
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg, bad) {
+  toastEl.textContent = msg;
+  toastEl.classList.toggle('bad', !!bad);
+  toastEl.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 3500);
+}
+async function post(route, body) {
+  const res = await fetch(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Dashboard-Token': ACTION_TOKEN },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+  return json;
+}
+
+const confirmDlg = document.getElementById('confirm');
+let confirmAction = null;
+function askConfirm(title, html, onOk) {
+  document.getElementById('c-title').textContent = title;
+  document.getElementById('c-text').innerHTML = html;
+  confirmAction = onOk;
+  confirmDlg.showModal();
+}
+document.getElementById('c-cancel').onclick = () => confirmDlg.close();
+document.getElementById('c-ok').onclick = async () => {
+  const fn = confirmAction;
+  confirmDlg.close();
+  if (!fn) return;
+  try {
+    await fn();
+    refresh();
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
+
+const viewer = document.getElementById('viewer');
+let viewerPath = null;
+async function openFile(filePath, kind) {
+  try {
+    const res = await fetch('/api/file?path=' + encodeURIComponent(filePath));
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    viewerPath = json.path;
+    document.getElementById('v-kind').textContent = kind || 'bestand';
+    document.getElementById('v-path').textContent = json.path;
+    document.getElementById('v-path').title = json.path;
+    document.getElementById('v-content').value = json.content;
+    document.getElementById('v-msg').textContent = '';
+    document.getElementById('v-msg').className = 'msg';
+    viewer.showModal();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+document.getElementById('v-close').onclick = () => viewer.close();
+document.getElementById('v-save').onclick = async () => {
+  const msg = document.getElementById('v-msg');
+  try {
+    await post('/api/file/save', { path: viewerPath, content: document.getElementById('v-content').value });
+    msg.textContent = 'opgeslagen';
+    msg.className = 'msg ok';
+    refresh();
+  } catch (e) {
+    msg.textContent = e.message;
+    msg.className = 'msg bad';
+  }
+};
+
+function confirmDelete(label, filePath) {
+  askConfirm('Verwijderen', 'Verwijder <b>' + esc(label) + '</b>?<br><code>' + esc(filePath) + '</code><br><br>Dit kan niet ongedaan worden gemaakt.',
+    async () => { await post('/api/file/delete', { path: filePath }); toast(label + ' verwijderd'); });
+}
+function confirmStop(name, pid) {
+  askConfirm('Sessie stoppen', 'Stop sessie <b>' + esc(name) + '</b> (pid ' + esc(pid) + ')?<br><br>Werk dat niet is opgeslagen gaat verloren.',
+    async () => { await post('/api/session/stop', { pid }); toast('sessie ' + name + ' gestopt'); });
+}
+function confirmHookDelete(h) {
+  askConfirm('Hook verwijderen', 'Verwijder de <b>' + esc(h.event) + '</b>-hook?<br><code>' + esc(h.command) + '</code><br><br>Uit <code>' + esc(h.settingsPath) + '</code>.',
+    async () => {
+      await post('/api/hook/delete', { settingsPath: h.settingsPath, event: h.event, groupIndex: h.groupIndex, hookIndex: h.hookIndex });
+      toast('hook verwijderd');
+    });
+}
+
+// event-delegatie: elke actieknop draagt zijn data in data-attributen
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.act');
+  if (!btn) return;
+  const d = btn.dataset;
+  if (d.act === 'view') openFile(d.path, d.kind);
+  else if (d.act === 'del') confirmDelete(d.label, d.path);
+  else if (d.act === 'stop') confirmStop(d.label, Number(d.pid));
+  else if (d.act === 'hookdel') confirmHookDelete(JSON.parse(d.hook));
+  else if (d.act === 'reveal') post('/api/file/reveal', { path: d.path }).catch((err) => toast(err.message, true));
+  else if (d.act === 'copy') {
+    navigator.clipboard.writeText(d.text).then(() => toast('gekopieerd: ' + d.text), () => toast('kopiëren mislukt', true));
+  }
+});
+
+function actView(filePath, kind) {
+  return '<button class="act" data-act="view" data-path="' + esc(filePath) + '" data-kind="' + esc(kind) + '" title="bekijk / bewerk">bewerk</button>';
+}
+function actDel(filePath, label) {
+  return '<button class="act danger" data-act="del" data-path="' + esc(filePath) + '" data-label="' + esc(label) + '" title="verwijder">wis</button>';
+}
+
 /* ── renderers ─────────────────────────────────────────── */
 function fmtReset(iso) {
   if (!iso) return '';
@@ -242,7 +441,9 @@ function limitLabel(l) {
 function renderPlan(p) {
   const planName = { max: 'Max', pro: 'Pro', free: 'Free' }[p.plan] || p.plan;
   let html = '<div class="planhead"><span class="planbadge">' + esc(planName) + '</span>' +
-    (p.tier ? '<span class="dim mono" style="font-size:11px">' + esc(p.tier) + '</span>' : '') + '</div>';
+    (p.tier ? '<span class="dim mono" style="font-size:11px">' + esc(p.tier) + '</span>' : '') +
+    (p.staleSince ? '<span class="tag" style="margin-left:auto;color:var(--signal)" title="de usage-API is even niet bereikbaar">stand van ' + ago(p.staleSince) + ' geleden</span>' : '') +
+    '</div>';
   html += '<div class="meters">' + (p.limits || []).map((l) => {
     const sev = l.severity === 'warning' ? ' warn' : (l.severity && l.severity !== 'normal') ? ' crit' : '';
     return '<div class="meter"><div class="mhead"><span>' + esc(limitLabel(l)) +
@@ -259,13 +460,43 @@ function renderPlan(p) {
   return html;
 }
 function renderSessions(data) {
-  return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Actief</th></tr>' +
-    data.map((s) =>
-      '<tr><td style="white-space:nowrap">' + esc(s.name || (s.sessionId || '').slice(0, 8)) +
-      ' <span class="dim mono">' + esc(s.pid) + '</span></td>' +
-      '<td class="mono muted ellipsis" title="' + esc(s.cwd) + '">' + esc((s.cwd || '').split('\\').pop()) + '</td>' +
-      '<td>' + pill(s.status) + '</td><td class="num muted">' + ago(s.updatedAt) + '</td></tr>'
-    ).join('') + '</table>';
+  return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Actief</th><th></th></tr>' +
+    data.map((s) => {
+      const label = s.name || (s.sessionId || '').slice(0, 8);
+      return '<tr><td style="white-space:nowrap">' + esc(label) +
+        ' <span class="dim mono">' + esc(s.pid) + '</span></td>' +
+        '<td class="mono muted ellipsis" title="' + esc(s.cwd) + '">' + esc((s.cwd || '').split('\\').pop()) + '</td>' +
+        '<td>' + pill(s.status) + '</td><td class="num muted">' + ago(s.updatedAt) + '</td>' +
+        '<td class="acts"><button class="act danger" data-act="stop" data-pid="' + esc(s.pid) +
+        '" data-label="' + esc(label) + '" title="stop deze sessie">stop</button></td></tr>';
+    }).join('') + '</table>';
+}
+function renderWaiting(data) {
+  return data.map((w) =>
+    '<div class="wait-item"><div>' + pill('waiting') + ' <b>' + esc(w.name || w.sessionId.slice(0, 8)) + '</b></div>' +
+    '<div class="wait-q">' + esc(w.question || 'wacht op invoer') + '</div>' +
+    (w.options && w.options.length
+      ? '<div class="wait-opts">' + w.options.map((o) =>
+          '<button class="act" data-act="copy" data-text="' + esc(o) + '" title="kopieer antwoord">' + esc(o) + '</button>'
+        ).join('') + '</div>'
+      : '') +
+    '<div class="mreset">antwoorden doe je in de terminal van deze sessie</div></div>'
+  ).join('');
+}
+function renderRecent(data) {
+  return '<table><tr><th>Bestand</th><th>Tool</th><th class="num">T</th><th></th></tr>' +
+    data.map((f) => {
+      const name = (f.path || '').split(/[\\/]/).pop();
+      return '<tr><td class="ellipsis" title="' + esc(f.path) + '"><span class="mono">' + esc(name) + '</span>' +
+        '<div class="dim ellipsis" style="font-size:11px">' + esc(f.path) + '</div></td>' +
+        '<td><span class="tag">' + esc(f.tool) + '</span></td>' +
+        '<td class="num muted">' + ago(f.at) + '</td>' +
+        '<td class="acts">' + (f.exists
+          ? actView(f.path, 'bestand') +
+            '<button class="act" data-act="reveal" data-path="' + esc(f.path) + '" title="toon in verkenner">open</button>'
+          : '<span class="dim mono" style="font-size:11px">weg</span>') +
+        '</td></tr>';
+    }).join('') + '</table>';
 }
 function renderActivity(data) {
   return '<table><tr><th>Sessie</th><th>Laatste actie</th></tr>' +
@@ -291,29 +522,34 @@ function renderTasks(data) {
     ).join('') + '</table>';
 }
 function renderAgents(data) {
-  return '<table><tr><th>Naam</th><th>Scope</th></tr>' +
+  return '<table><tr><th>Naam</th><th>Scope</th><th></th></tr>' +
     data.map((a) =>
       '<tr><td><span class="mono">' + esc(a.name) + '</span>' +
       (a.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(a.description) + '">' + esc(a.description) + '</div>' : '') +
-      '</td><td><span class="tag">' + esc(a.scope === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+      '</td><td><span class="tag" title="' + esc(a.scope) + '">' + esc(a.scope === 'globaal' ? 'globaal' : 'project') + '</span></td>' +
+      '<td class="acts">' + actView(a.path, 'agent') + actDel(a.path, a.name) + '</td></tr>'
     ).join('') + '</table>';
 }
 function renderHooks(data) {
-  return '<table><tr><th>Event</th><th>Commando</th></tr>' +
+  return '<table><tr><th>Event</th><th>Commando</th><th>Scope</th><th></th></tr>' +
     data.map((h) =>
       '<tr><td style="white-space:nowrap"><span class="tag">' + esc(h.event) + '</span>' +
       (h.matcher ? ' <span class="dim mono">' + esc(h.matcher) + '</span>' : '') + '</td>' +
-      '<td class="mono muted ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td></tr>'
+      '<td class="mono muted ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td>' +
+      '<td><span class="tag" title="' + esc(h.source) + '">' + esc(h.source === 'globaal' ? 'globaal' : 'project') + '</span></td>' +
+      '<td class="acts">' + actView(h.settingsPath, 'settings.json') +
+      '<button class="act danger" data-act="hookdel" data-hook="' + esc(JSON.stringify(h)) + '" title="verwijder hook">wis</button>' +
+      '</td></tr>'
     ).join('') + '</table>';
 }
 function renderSkills(data) {
   const skills = data.skills || [];
   const plugins = data.plugins || [];
-  let html = '<table><tr><th>Skill</th></tr>' +
+  let html = '<table><tr><th>Skill</th><th></th></tr>' +
     skills.map((s) =>
       '<tr><td><span class="mono">' + esc(s.name) + '</span>' +
       (s.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(s.description) + '">' + esc(s.description) + '</div>' : '') +
-      '</td></tr>'
+      '</td><td class="acts">' + actView(s.skillFile, 'skill') + actDel(s.path, s.name) + '</td></tr>'
     ).join('') + '</table>';
   if (plugins.length) {
     html += '<div style="margin-top:10px">' + plugins.map((p) =>
@@ -332,9 +568,10 @@ function renderMcp(data) {
     ).join('') + '</table>';
 }
 function renderLoops(data) {
-  return '<table><tr><th>Naam</th><th>Pad</th></tr>' +
+  return '<table><tr><th>Naam</th><th>Pad</th><th></th></tr>' +
     data.map((l) =>
-      '<tr><td>' + esc(l.name) + '</td><td class="mono dim ellipsis">' + esc(l.path) + '</td></tr>'
+      '<tr><td>' + esc(l.name) + '</td><td class="mono dim ellipsis" title="' + esc(l.path) + '">' + esc(l.path) + '</td>' +
+      '<td class="acts">' + actDel(l.path, l.name) + '</td></tr>'
     ).join('') + '</table>';
 }
 function renderProjects(data) {
@@ -453,8 +690,13 @@ async function refresh() {
     document.getElementById('k-session-limit').textContent = sess ? sess.percent + '%' : '–';
     document.getElementById('k-week-limit').textContent = week ? week.percent + '%' : '–';
 
+    const waiting = (state.waiting && state.waiting.data) || [];
+    document.getElementById('p-waiting').hidden = !waiting.length;
+    if (waiting.length) panel('#p-waiting', state.waiting, renderWaiting);
+
     panel('#p-plan', state.plan, renderPlan);
     panel('#p-sessions', state.sessions, renderSessions);
+    panel('#p-recent', state.recentFiles, renderRecent);
     panel('#p-activity', state.activity, renderActivity);
     panel('#p-running-agents', state.runningAgents, renderRunningAgents);
     panel('#p-tasks', state.tasks, renderTasks);
