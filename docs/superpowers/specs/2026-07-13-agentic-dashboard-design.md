@@ -130,3 +130,9 @@ Op basis van `ideeen/md`. Het dashboard gaat van read-only naar **read-write met
 - **Bestandsviewer** als modal: toont de inhoud met een bewerkmodus en "opslaan"; toont het volledige pad en de scope.
 - **Wachtend**-paneel: sessie, de vraag, de opties, en een kopieerknop voor het antwoord. Beantwoorden gebeurt in de terminal (geen keystroke-injectie: te fragiel, kan input in het verkeerde venster zetten).
 - **Recente bestanden**-paneel: pad, sessie, tijdstip, met "inzien" en "openen".
+
+## Robuustheid van het plan-paneel
+
+De usage-API rate-limit bij te frequente calls (HTTP 429). Het paneel houdt daarom de
+laatst succesvol opgehaalde stand vast en toont die met een "stand van X geleden"-markering
+in plaats van een leeg paneel; na een fout wordt 2 minuten niet opnieuw geprobeerd.
