@@ -83,3 +83,13 @@ Gebaseerd op onderzoek naar vergelijkbare tools (ccusage, agents-observe, multi-
 - Tokens-per-dag als toegankelijk SVG-staafdiagram (assen, hover-tooltip, geen chartjunk).
 
 Alles blijft read-only, 127.0.0.1, foutisolatie per paneel.
+
+---
+
+# V3 — Plan & limieten + rename (2026-07-13)
+
+- Naam gewijzigd van "Agentic OS" naar **Claude Dashboard** (titel + wordmark).
+- Nieuw paneel **Plan & limieten**, zoals in de Claude-app: abonnement (Max/Pro) en rate-limit-tier uit `~/.claude/.credentials.json`; sessie- (5 uur), week- en model-week-limiet met percentage, severity en reset-tijdstip, plus extra-usage-tegoed, via `GET https://api.anthropic.com/api/oauth/usage` (dezelfde endpoint als de app).
+- `scanPlan(claudeDir, fetcher)` — fetcher injecteerbaar voor tests; het OAuth-token blijft strikt server-side en komt nooit in `/api/state`.
+- Server cachet het API-antwoord 60 seconden (max 1 call/minuut i.p.v. elke poll).
+- KPI's "sessie-limiet" en "weeklimiet" in de ops-strip.
