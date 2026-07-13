@@ -136,3 +136,6 @@ Op basis van `ideeen/md`. Het dashboard gaat van read-only naar **read-write met
 De usage-API rate-limit bij te frequente calls (HTTP 429). Het paneel houdt daarom de
 laatst succesvol opgehaalde stand vast en toont die met een "stand van X geleden"-markering
 in plaats van een leeg paneel; na een fout wordt 2 minuten niet opnieuw geprobeerd.
+De laatst gelukte stand (zonder token) staat ook op schijf in
+`~/.claude/dashboard-plan-cache.json`, zodat de fallback een serverherstart overleeft —
+juist bij een herstart is de eerste call vaak een 429.

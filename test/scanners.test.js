@@ -270,6 +270,52 @@ test('scanPlan throws a clear error without credentials or on API failure', asyn
   await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
 });
 
+test('createPlanSection valt na een herstart bij 429 terug op de bewaarde stand', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(
+    path.join(dir, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'tok-x', subscriptionType: 'max', rateLimitTier: 'max_20x' } })
+  );
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 34, severity: 'normal', resets_at: '2026-07-13T12:29:59Z', is_active: true, scope: null }],
+  };
+  const okFetch = async () => ({ ok: true, status: 200, json: async () => apiResponse });
+  const getFirst = scanners.createPlanSection(dir, okFetch);
+  const first = await getFirst();
+  assert.strictEqual(first.data.plan, 'max');
+  assert.strictEqual(first.data.staleSince, null);
+  // de bewaarde stand mag het token niet bevatten
+  const snapPath = path.join(dir, 'dashboard-plan-cache.json');
+  const rawSnap = fs.readFileSync(snapPath, 'utf8');
+  assert.ok(!rawSnap.includes('tok-x'));
+  // simuleer verstreken tijd: de bewaarde stand is ouder dan de verscache
+  const snap = JSON.parse(rawSnap);
+  const oldAt = Date.now() - 300000;
+  fs.writeFileSync(snapPath, JSON.stringify({ ...snap, at: oldAt }));
+  // 'herstart': nieuwe instantie, de API geeft nu 429
+  const getSecond = scanners.createPlanSection(dir, async () => ({ ok: false, status: 429 }));
+  const second = await getSecond();
+  assert.ok(!second.error, 'geen kale fout maar de oude stand');
+  assert.strictEqual(second.data.plan, 'max');
+  assert.strictEqual(second.data.limits[0].percent, 34);
+  assert.strictEqual(second.data.staleSince, oldAt);
+});
+
+test('createPlanSection zonder eerdere stand geeft de fout en wacht 2 minuten met opnieuw proberen', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
+  let calls = 0;
+  const getPlan = scanners.createPlanSection(dir, async () => {
+    calls++;
+    return { ok: false, status: 429 };
+  });
+  const out1 = await getPlan();
+  assert.match(out1.error, /429/);
+  const out2 = await getPlan();
+  assert.match(out2.error, /429/);
+  assert.strictEqual(calls, 1, 'binnen de backoff geen nieuwe API-call');
+});
+
 test('scanRecentFiles collects file_path from Write/Edit tool calls, newest first', () => {
   const dir = makeClaudeDir();
   const projDir = path.join(dir, 'projects', 'C--demo');

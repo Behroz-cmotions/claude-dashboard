@@ -25,29 +25,10 @@ function allowedRoots() {
   return roots;
 }
 
-// plan/limieten: max 1 API-call per minuut, token blijft server-side.
-// Bij een fout (bijv. rate limit) blijft de laatst bekende stand staan, gemarkeerd
-// als verouderd — beter een cijfer van een minuut oud dan een leeg paneel.
-const PLAN_CACHE_MS = 60000;
-const PLAN_BACKOFF_MS = 120000;
-let planCache = { at: 0, data: null, error: null, errorAt: 0 };
-async function getPlanSection() {
-  const now = Date.now();
-  const fresh = now - planCache.at < PLAN_CACHE_MS && planCache.data;
-  const backingOff = planCache.error && now - planCache.errorAt < PLAN_BACKOFF_MS;
-  if (!fresh && !backingOff) {
-    try {
-      planCache = { at: Date.now(), data: await scanners.scanPlan(CLAUDE_DIR), error: null, errorAt: 0 };
-    } catch (err) {
-      planCache.error = String((err && err.message) || err);
-      planCache.errorAt = Date.now();
-    }
-  }
-  if (planCache.data) {
-    return { data: { ...planCache.data, staleSince: planCache.error ? planCache.at : null } };
-  }
-  return { error: planCache.error || 'plan nog niet opgehaald' };
-}
+// plan/limieten: max 1 API-call per minuut, token blijft server-side. De laatst
+// gelukte stand overleeft een herstart via dashboard-plan-cache.json in ~/.claude,
+// dus een 429 bij de start toont "stand van X geleden" i.p.v. een leeg paneel.
+const getPlanSection = scanners.createPlanSection(CLAUDE_DIR);
 
 // per-transcript tokencache: alleen gewijzigde bestanden worden opnieuw geparset
 const tokenCache = new Map();
