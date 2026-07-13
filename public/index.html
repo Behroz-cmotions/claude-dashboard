@@ -109,6 +109,8 @@
   details.proj summary .pname { font-family: var(--mono); font-size: 13px; }
   details.proj summary .pmeta { margin-left: auto; font: 400 11px var(--mono); color: var(--ink-3); white-space: nowrap; }
   details.proj table { margin: 2px 0 10px 18px; width: calc(100% - 18px); }
+  details.proj summary .track { flex: 1; max-width: 260px; height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; align-self: center; }
+  details.proj summary .fill { display: block; height: 100%; border-radius: 3px; background: var(--data); min-width: 2px; }
   summary:focus-visible, a:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
 
   .duo { display: flex; flex-direction: column; gap: 14px; }
@@ -225,6 +227,9 @@
         <div class="panel" id="p-usage-models"><h2>Per model <span class="count"></span></h2><div class="body"></div></div>
         <div class="panel" id="p-usage-tools"><h2>Meest gebruikte tools <span class="count"></span></h2><div class="body"></div></div>
       </div>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="panel" id="p-token-drill"><h2>Tokens per project &amp; sessie <span class="count"></span></h2><div class="body"></div></div>
     </div>
   </section>
 
@@ -459,17 +464,48 @@ function renderPlan(p) {
   }
   return html;
 }
+let tokenBySession = {};
+let tokenTotal = 0;
+let projectPathByDir = {};
+function sessionTokens(sessionId) {
+  const t = tokenBySession[sessionId];
+  if (!t) return '<span class="dim">–</span>';
+  const share = tokenTotal ? Math.round((t / tokenTotal) * 1000) / 10 : 0;
+  return compact(t) + ' <span class="dim">(' + share + '%)</span>';
+}
 function renderSessions(data) {
-  return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Actief</th><th></th></tr>' +
+  return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Tokens</th><th class="num">Actief</th><th></th></tr>' +
     data.map((s) => {
       const label = s.name || (s.sessionId || '').slice(0, 8);
       return '<tr><td style="white-space:nowrap">' + esc(label) +
         ' <span class="dim mono">' + esc(s.pid) + '</span></td>' +
         '<td class="mono muted ellipsis" title="' + esc(s.cwd) + '">' + esc((s.cwd || '').split('\\').pop()) + '</td>' +
-        '<td>' + pill(s.status) + '</td><td class="num muted">' + ago(s.updatedAt) + '</td>' +
+        '<td>' + pill(s.status) + '</td>' +
+        '<td class="num mono">' + sessionTokens(s.sessionId) + '</td>' +
+        '<td class="num muted">' + ago(s.updatedAt) + '</td>' +
         '<td class="acts"><button class="act danger" data-act="stop" data-pid="' + esc(s.pid) +
         '" data-label="' + esc(label) + '" title="stop deze sessie">stop</button></td></tr>';
     }).join('') + '</table>';
+}
+function renderTokenDrill(u) {
+  if (!u.total) return '<div class="empty">geen tokendata</div>';
+  const max = u.projects[0] ? u.projects[0].tokens : 1;
+  return '<div class="dim" style="font-size:11.5px;margin-bottom:8px">Totaal over alle lokale transcripts: <b class="mono" style="color:var(--ink)">' +
+    compact(u.total) + '</b> tokens (input + output; percentages zijn het aandeel daarvan)</div>' +
+    u.projects.map((p, i) => {
+      const label = (projectPathByDir[p.dirName] || p.dirName).split('\\').pop();
+      return '<details class="proj"' + (i === 0 ? ' open' : '') + '><summary>' +
+        '<span class="pname">' + esc(label) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + Math.max(1, Math.round((p.tokens / max) * 100)) + '%"></span></span>' +
+        '<span class="pmeta">' + compact(p.tokens) + ' · ' + p.pct + '%</span></summary>' +
+        '<table><tr><th>Sessie</th><th>Titel</th><th class="num">Tokens</th><th class="num">Aandeel</th></tr>' +
+        p.sessions.map((s) =>
+          '<tr><td class="mono dim">' + esc(s.sessionId.slice(0, 8)) + '</td>' +
+          '<td class="ellipsis" title="' + esc(s.title) + '">' + esc(s.title || '—') + '</td>' +
+          '<td class="num mono">' + compact(s.tokens) + '</td>' +
+          '<td class="num mono muted">' + s.pct + '%</td></tr>'
+        ).join('') + '</table></details>';
+    }).join('');
 }
 function renderWaiting(data) {
   return data.map((w) =>
@@ -690,6 +726,12 @@ async function refresh() {
     document.getElementById('k-session-limit').textContent = sess ? sess.percent + '%' : '–';
     document.getElementById('k-week-limit').textContent = week ? week.percent + '%' : '–';
 
+    const tu = (state.tokenUsage && state.tokenUsage.data) || null;
+    tokenBySession = (tu && tu.bySession) || {};
+    tokenTotal = (tu && tu.total) || 0;
+    projectPathByDir = {};
+    for (const p of (state.projects && state.projects.data) || []) projectPathByDir[p.dirName] = p.path;
+
     const waiting = (state.waiting && state.waiting.data) || [];
     document.getElementById('p-waiting').hidden = !waiting.length;
     if (waiting.length) panel('#p-waiting', state.waiting, renderWaiting);
@@ -701,6 +743,8 @@ async function refresh() {
     panel('#p-running-agents', state.runningAgents, renderRunningAgents);
     panel('#p-tasks', state.tasks, renderTasks);
     panel('#p-usage-chart', state.usage, renderUsageChart);
+    panel('#p-token-drill', state.tokenUsage, renderTokenDrill);
+    document.querySelector('#p-token-drill .count').textContent = tu ? compact(tu.total) : '';
     panel('#p-usage-models', state.usage, renderModels);
     panel('#p-usage-tools', state.usage, renderTools);
     panel('#p-agents', state.agents, renderAgents);

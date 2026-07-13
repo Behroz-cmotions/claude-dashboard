@@ -49,6 +49,9 @@ async function getPlanSection() {
   return { error: planCache.error || 'plan nog niet opgehaald' };
 }
 
+// per-transcript tokencache: alleen gewijzigde bestanden worden opnieuw geparset
+const tokenCache = new Map();
+
 async function buildState() {
   const state = {};
   const wrap = (name, fn) => {
@@ -58,11 +61,14 @@ async function buildState() {
       state[name] = { error: String((err && err.message) || err) };
     }
   };
+  let titles = {};
+  try {
+    titles = scanners.buildSessionTitles(CLAUDE_DIR);
+  } catch {
+    // zonder titels verder
+  }
   wrap('sessions', () => scanners.scanSessions(CLAUDE_DIR));
-  wrap('projects', () => {
-    const titles = scanners.buildSessionTitles(CLAUDE_DIR);
-    return scanners.scanProjects(CLAUDE_DIR, titles);
-  });
+  wrap('projects', () => scanners.scanProjects(CLAUDE_DIR, titles));
   // alleen echte, bestaande paden meenemen (geen dirName-fallbacks zonder separator)
   const projectPaths = ((state.projects && state.projects.data) || [])
     .map((p) => p.path)
@@ -80,6 +86,7 @@ async function buildState() {
   wrap('skills', () => scanners.scanSkills(CLAUDE_DIR));
   wrap('mcpServers', () => scanners.scanMcpServers(path.dirname(CLAUDE_DIR)));
   wrap('recentFiles', () => scanners.scanRecentFiles(CLAUDE_DIR));
+  wrap('tokenUsage', () => scanners.scanTokenUsage(CLAUDE_DIR, tokenCache, titles));
   state.plan = await getPlanSection();
   state.generatedAt = Date.now();
   return state;

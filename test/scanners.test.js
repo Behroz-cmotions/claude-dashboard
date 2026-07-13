@@ -332,6 +332,52 @@ test('scanWaiting falls back to the last assistant text when there is no questio
   assert.deepStrictEqual(out[0].options, []);
 });
 
+test('scanTokenUsage aggregates tokens per project and session with percentages', () => {
+  const dir = makeClaudeDir();
+  const mkLine = (inTok, outTok) => JSON.stringify({
+    type: 'assistant', timestamp: '2026-07-13T10:00:00Z',
+    message: { usage: { input_tokens: inTok, output_tokens: outTok, cache_creation_input_tokens: 5, cache_read_input_tokens: 100 } },
+  });
+  const projA = path.join(dir, 'projects', 'C--proj-a');
+  const projB = path.join(dir, 'projects', 'C--proj-b');
+  fs.mkdirSync(projA, { recursive: true });
+  fs.mkdirSync(projB, { recursive: true });
+  fs.writeFileSync(path.join(projA, 's1.jsonl'), [mkLine(10, 50), mkLine(0, 40), 'KAPOT'].join('\n'));
+  fs.writeFileSync(path.join(projA, 's2.jsonl'), mkLine(0, 200));
+  fs.writeFileSync(path.join(projB, 's3.jsonl'), mkLine(0, 700));
+
+  const titles = { s2: { display: 'grote sessie', timestamp: 1 } };
+  const out = scanners.scanTokenUsage(dir, new Map(), titles);
+
+  assert.strictEqual(out.total, 1000, 'input+output geteld, cache niet');
+  assert.strictEqual(out.projects[0].dirName, 'C--proj-b', 'grootste project eerst');
+  assert.strictEqual(out.projects[0].tokens, 700);
+  assert.strictEqual(out.projects[0].pct, 70);
+  assert.strictEqual(out.projects[1].tokens, 300);
+  const s2 = out.projects[1].sessions.find((s) => s.sessionId === 's2');
+  assert.strictEqual(s2.tokens, 200);
+  assert.strictEqual(s2.pct, 20);
+  assert.strictEqual(s2.title, 'grote sessie');
+  assert.strictEqual(out.bySession.s1, 100);
+  assert.strictEqual(out.bySession.s3, 700);
+});
+
+test('scanTokenUsage reuses cache entries when mtime and size are unchanged', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--p');
+  fs.mkdirSync(projDir, { recursive: true });
+  const file = path.join(projDir, 's1.jsonl');
+  fs.writeFileSync(file, JSON.stringify({
+    type: 'assistant', message: { usage: { input_tokens: 0, output_tokens: 10 } },
+  }));
+  const st = fs.statSync(file);
+  const cache = new Map();
+  // voorgekookte cache-entry met kloppende mtime/size: parse moet worden overgeslagen
+  cache.set(file, { mtimeMs: st.mtimeMs, size: st.size, totals: { input: 0, output: 999, cacheCreate: 0, cacheRead: 0 } });
+  const out = scanners.scanTokenUsage(dir, cache, {});
+  assert.strictEqual(out.total, 999, 'cache-waarde gebruikt in plaats van het bestand te parsen');
+});
+
 test('scanHistory returns newest entries first, limited', () => {
   const dir = makeClaudeDir();
   const lines = [];
