@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { isAllowedPath, removeHook, deletePath, saveFile } = require('../lib/actions');
+const { isAllowedPath, removeHook, deletePath, saveFile, createFile, addHook } = require('../lib/actions');
 
 function tmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'aos-act-'));
@@ -95,6 +95,37 @@ test('removeHook rejects an out-of-range index instead of deleting the wrong hoo
   fs.writeFileSync(settingsPath, JSON.stringify(original));
   assert.throws(() => removeHook(settingsPath, 'Stop', 0, 5, [root]), /niet gevonden/i);
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(settingsPath, 'utf8')), original, 'bestand ongewijzigd');
+});
+
+test('createFile creates parent dirs, refuses overwrite and paths outside the root', () => {
+  const root = tmpRoot();
+  const target = path.join(root, 'skills', 'nieuw', 'SKILL.md');
+  createFile(target, '# skill', [root]);
+  assert.strictEqual(fs.readFileSync(target, 'utf8'), '# skill');
+  assert.throws(() => createFile(target, 'overschrijf', [root]), /bestaat al/i);
+  assert.strictEqual(fs.readFileSync(target, 'utf8'), '# skill', 'inhoud onaangetast');
+  assert.throws(() => createFile(path.join(os.tmpdir(), 'buiten.md'), 'x', [root]), /buiten/i);
+});
+
+test('addHook appends to existing settings and creates the file when missing', () => {
+  const root = tmpRoot();
+  const settingsPath = path.join(root, 'settings.json');
+  fs.writeFileSync(settingsPath, JSON.stringify({
+    model: 'claude-fable-5',
+    hooks: { Stop: [{ hooks: [{ type: 'command', command: 'bestaand.py' }] }] },
+  }));
+  addHook(settingsPath, 'Stop', '', 'nieuw.py', [root]);
+  addHook(settingsPath, 'PreToolUse', 'Bash', 'check.sh', [root]);
+  const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  assert.strictEqual(after.model, 'claude-fable-5');
+  assert.strictEqual(after.hooks.Stop.length, 2, 'nieuwe groep toegevoegd naast bestaande');
+  assert.strictEqual(after.hooks.PreToolUse[0].matcher, 'Bash');
+  assert.strictEqual(after.hooks.PreToolUse[0].hooks[0].command, 'check.sh');
+
+  const fresh = path.join(root, 'sub', '.claude', 'settings.json');
+  addHook(fresh, 'SessionStart', '', 'init.sh', [root]);
+  const created = JSON.parse(fs.readFileSync(fresh, 'utf8'));
+  assert.strictEqual(created.hooks.SessionStart[0].hooks[0].command, 'init.sh');
 });
 
 test('removeHook refuses a settings file outside the root', () => {

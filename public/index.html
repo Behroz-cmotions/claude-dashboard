@@ -185,6 +185,16 @@
     box-shadow: 0 6px 24px rgba(0,0,0,.55); display: none;
   }
   .toast.bad { border-color: var(--err); color: var(--err); }
+  .panel h2 .act { margin-left: 8px; }
+  .panel h2 .count { margin-left: auto; }
+  .form { display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .form input, .form select {
+    width: 100%; margin-top: 4px; background: var(--inset); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: 400 13px var(--mono);
+  }
+  .form input:focus, .form select:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+  .filters { display: flex; gap: 6px; margin-bottom: 10px; }
+  .act.on { color: var(--data); border-color: var(--data); background: var(--inset); }
 
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) {
@@ -221,26 +231,26 @@
 
   <section class="zone">
     <div class="zone-label">Verbruik</div>
-    <div class="grid g-usage">
+    <div class="grid">
+      <div class="panel" id="p-token-drill"><h2>Tokens per project &amp; sessie <span class="count"></span></h2><div class="body"></div></div>
+    </div>
+    <div class="grid g-usage" style="margin-top:14px">
       <div class="panel" id="p-usage-chart"><h2>Tokens per dag <span class="count"></span></h2><div class="body"></div></div>
       <div class="duo">
         <div class="panel" id="p-usage-models"><h2>Per model <span class="count"></span></h2><div class="body"></div></div>
         <div class="panel" id="p-usage-tools"><h2>Meest gebruikte tools <span class="count"></span></h2><div class="body"></div></div>
       </div>
     </div>
-    <div class="grid" style="margin-top:14px">
-      <div class="panel" id="p-token-drill"><h2>Tokens per project &amp; sessie <span class="count"></span></h2><div class="body"></div></div>
-    </div>
   </section>
 
   <section class="zone">
     <div class="zone-label">Naslag</div>
     <div class="grid g-ref">
-      <div class="panel" id="p-agents"><h2>Agents <span class="count"></span></h2><div class="body"></div></div>
-      <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span></h2><div class="body"></div></div>
-      <div class="panel" id="p-skills"><h2>Skills &amp; plugins <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-agents"><h2>Agents <span class="count"></span><button class="act" data-act="new" data-what="agent">+ nieuw</button></h2><div class="body"></div></div>
+      <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span><button class="act" data-act="new" data-what="hook">+ nieuw</button></h2><div class="body"></div></div>
+      <div class="panel" id="p-skills"><h2>Skills &amp; plugins <span class="count"></span><button class="act" data-act="new" data-what="skill">+ nieuw</button></h2><div class="body"></div></div>
       <div class="panel" id="p-mcp"><h2>MCP-servers <span class="count"></span></h2><div class="body"></div></div>
-      <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span><button class="act" data-act="new" data-what="loop">+ nieuw</button></h2><div class="body"></div></div>
       <div class="panel" id="p-recent"><h2>Recente bestanden <span class="count"></span></h2><div class="body"></div></div>
     </div>
   </section>
@@ -275,6 +285,26 @@
     <span class="msg"></span>
     <button class="btn" id="c-cancel">Annuleren</button>
     <button class="btn danger" id="c-ok">Bevestigen</button>
+  </div>
+</dialog>
+
+<dialog id="create">
+  <div class="dlg-head"><span class="t" id="n-title">nieuw</span></div>
+  <div class="dlg-body">
+    <div class="form" id="n-form">
+      <label id="n-name-row">Naam<br><input id="n-name" type="text" placeholder="mijn-agent" spellcheck="false"></label>
+      <label>Scope<br><select id="n-scope"><option value="globaal">globaal (~/.claude)</option></select></label>
+      <div id="n-hook-rows" hidden>
+        <label>Event<br><select id="n-event"></select></label>
+        <label>Matcher <span class="dim">(optioneel, bijv. Bash)</span><br><input id="n-matcher" type="text" spellcheck="false"></label>
+        <label>Commando<br><input id="n-command" type="text" placeholder="node script.js" spellcheck="false"></label>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <span class="msg" id="n-msg"></span>
+    <button class="btn" id="n-cancel">Annuleren</button>
+    <button class="btn primary" id="n-ok">Aanmaken</button>
   </div>
 </dialog>
 
@@ -407,6 +437,63 @@ function confirmHookDelete(h) {
     });
 }
 
+// uitklap-status overleeft re-renders: gebruikerskeuzes gaan vóór defaults
+const detailsState = new Map();
+function detAttrs(key, defOpen) {
+  const open = detailsState.has(key) ? detailsState.get(key) : defOpen;
+  return ' data-key="' + esc(key) + '"' + (open ? ' open' : '');
+}
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (d.tagName === 'DETAILS' && d.dataset.key) detailsState.set(d.dataset.key, d.open);
+}, true);
+
+/* ── nieuw aanmaken ────────────────────────────────────── */
+const HOOK_EVENTS = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionStart', 'SessionEnd', 'Notification', 'SubagentStart', 'SubagentStop', 'PreCompact'];
+const createDlg = document.getElementById('create');
+let createWhat = null;
+let knownProjects = [];
+function openCreate(what) {
+  if (what === 'loop') {
+    toast('Loops zijn geen bestanden: start ze in een sessie met /loop of /schedule');
+    return;
+  }
+  createWhat = what;
+  document.getElementById('n-title').textContent = 'nieuwe ' + what;
+  document.getElementById('n-name-row').hidden = what === 'hook';
+  document.getElementById('n-hook-rows').hidden = what !== 'hook';
+  document.getElementById('n-name').value = '';
+  document.getElementById('n-matcher').value = '';
+  document.getElementById('n-command').value = '';
+  document.getElementById('n-scope').innerHTML = '<option value="globaal">globaal (~/.claude)</option>' +
+    knownProjects.map((p) => '<option value="' + esc(p) + '">' + esc(p.split('\\').pop()) + '</option>').join('');
+  document.getElementById('n-event').innerHTML = HOOK_EVENTS.map((ev) => '<option>' + ev + '</option>').join('');
+  const msg = document.getElementById('n-msg');
+  msg.textContent = ''; msg.className = 'msg';
+  createDlg.showModal();
+}
+document.getElementById('n-cancel').onclick = () => createDlg.close();
+document.getElementById('n-ok').onclick = async () => {
+  const msg = document.getElementById('n-msg');
+  try {
+    const res = await post('/api/create', {
+      what: createWhat,
+      name: document.getElementById('n-name').value,
+      scope: document.getElementById('n-scope').value,
+      event: document.getElementById('n-event').value,
+      matcher: document.getElementById('n-matcher').value,
+      command: document.getElementById('n-command').value,
+    });
+    createDlg.close();
+    toast(createWhat + ' aangemaakt');
+    refresh();
+    if (createWhat !== 'hook') openFile(res.created, createWhat);
+  } catch (e) {
+    msg.textContent = e.message;
+    msg.className = 'msg bad';
+  }
+};
+
 // event-delegatie: elke actieknop draagt zijn data in data-attributen
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.act');
@@ -417,6 +504,8 @@ document.addEventListener('click', (e) => {
   else if (d.act === 'stop') confirmStop(d.label, Number(d.pid));
   else if (d.act === 'hookdel') confirmHookDelete(JSON.parse(d.hook));
   else if (d.act === 'reveal') post('/api/file/reveal', { path: d.path }).catch((err) => toast(err.message, true));
+  else if (d.act === 'new') openCreate(d.what);
+  else if (d.act === 'period') { tokenPeriod = d.val; refresh(); }
   else if (d.act === 'copy') {
     navigator.clipboard.writeText(d.text).then(() => toast('gekopieerd: ' + d.text), () => toast('kopiëren mislukt', true));
   }
@@ -487,14 +576,21 @@ function renderSessions(data) {
         '" data-label="' + esc(label) + '" title="stop deze sessie">stop</button></td></tr>';
     }).join('') + '</table>';
 }
+let tokenPeriod = 'all';
+const PERIODS = [['day', 'vandaag'], ['week', '7 dagen'], ['month', '30 dagen'], ['all', 'alles']];
+function periodLabel() { return PERIODS.find(([v]) => v === tokenPeriod)[1]; }
 function renderTokenDrill(u) {
-  if (!u.total) return '<div class="empty">geen tokendata</div>';
+  const filters = '<div class="filters">' + PERIODS.map(([v, l]) =>
+    '<button class="act' + (tokenPeriod === v ? ' on' : '') + '" data-act="period" data-val="' + v + '">' + l + '</button>'
+  ).join('') + '</div>';
+  if (!u.total) return filters + '<div class="empty">geen tokens in deze periode</div>';
   const max = u.projects[0] ? u.projects[0].tokens : 1;
-  return '<div class="dim" style="font-size:11.5px;margin-bottom:8px">Totaal over alle lokale transcripts: <b class="mono" style="color:var(--ink)">' +
+  return filters +
+    '<div class="dim" style="font-size:11.5px;margin-bottom:8px">Totaal (' + periodLabel() + '): <b class="mono" style="color:var(--ink)">' +
     compact(u.total) + '</b> tokens (input + output; percentages zijn het aandeel daarvan)</div>' +
     u.projects.map((p, i) => {
       const label = (projectPathByDir[p.dirName] || p.dirName).split('\\').pop();
-      return '<details class="proj"' + (i === 0 ? ' open' : '') + '><summary>' +
+      return '<details class="proj"' + detAttrs('drill:' + p.dirName, i === 0) + '><summary>' +
         '<span class="pname">' + esc(label) + '</span>' +
         '<span class="track"><span class="fill" style="width:' + Math.max(1, Math.round((p.tokens / max) * 100)) + '%"></span></span>' +
         '<span class="pmeta">' + compact(p.tokens) + ' · ' + p.pct + '%</span></summary>' +
@@ -612,7 +708,7 @@ function renderLoops(data) {
 }
 function renderProjects(data) {
   return data.map((p, i) =>
-    '<details class="proj"' + (i === 0 ? ' open' : '') + '><summary>' +
+    '<details class="proj"' + detAttrs('proj:' + p.dirName, i === 0) + '><summary>' +
     '<span class="pname">' + esc((p.path || '').split('\\').pop() || p.path) + '</span>' +
     '<span class="muted ellipsis" style="font-size:12px">' + esc(p.path) + '</span>' +
     '<span class="pmeta">' + p.sessionCount + ' · ' + ago(p.lastActivity) + '</span></summary>' +
@@ -669,7 +765,7 @@ function renderUsageChart(u) {
   if (days.length > 2) svg += lbl(Math.floor(days.length / 2));
   if (days.length > 1) svg += lbl(days.length - 1);
   svg += '</svg>';
-  svg += '<details class="tableview"><summary>als tabel</summary><table><tr><th>Dag</th><th class="num">Tokens</th><th class="num">Turns</th></tr>' +
+  svg += '<details class="tableview"' + detAttrs('chart-table', false) + '><summary>als tabel</summary><table><tr><th>Dag</th><th class="num">Tokens</th><th class="num">Turns</th></tr>' +
     days.map((d) => '<tr><td class="mono">' + esc(d.day) + '</td><td class="num">' + nf.format(d.tokens) + '</td><td class="num muted">' + nf.format(d.turns) + '</td></tr>').join('') +
     '</table></details>';
   return svg;
@@ -699,7 +795,7 @@ async function refresh() {
   const conn = document.getElementById('conn');
   const connT = document.getElementById('conn-t');
   try {
-    const res = await fetch('/api/state');
+    const res = await fetch('/api/state' + (tokenPeriod !== 'all' ? '?period=' + tokenPeriod : ''));
     const state = await res.json();
     conn.classList.remove('lost');
     connT.textContent = 'live ' + new Date(state.generatedAt).toLocaleTimeString('nl-NL');
@@ -731,6 +827,7 @@ async function refresh() {
     tokenTotal = (tu && tu.total) || 0;
     projectPathByDir = {};
     for (const p of (state.projects && state.projects.data) || []) projectPathByDir[p.dirName] = p.path;
+    knownProjects = Object.values(projectPathByDir).filter((p) => p && p.includes('\\'));
 
     const waiting = (state.waiting && state.waiting.data) || [];
     document.getElementById('p-waiting').hidden = !waiting.length;

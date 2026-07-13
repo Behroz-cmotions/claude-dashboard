@@ -52,7 +52,14 @@ async function getPlanSection() {
 // per-transcript tokencache: alleen gewijzigde bestanden worden opnieuw geparset
 const tokenCache = new Map();
 
-async function buildState() {
+// 'day' = vandaag, 'week' = laatste 7 dagen, 'month' = laatste 30 dagen (dag-granulariteit, UTC)
+function sinceDayFor(period) {
+  const daysBack = { day: 0, week: 6, month: 29 }[period];
+  if (daysBack == null) return null;
+  return new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+}
+
+async function buildState(period) {
   const state = {};
   const wrap = (name, fn) => {
     try {
@@ -86,7 +93,7 @@ async function buildState() {
   wrap('skills', () => scanners.scanSkills(CLAUDE_DIR));
   wrap('mcpServers', () => scanners.scanMcpServers(path.dirname(CLAUDE_DIR)));
   wrap('recentFiles', () => scanners.scanRecentFiles(CLAUDE_DIR));
-  wrap('tokenUsage', () => scanners.scanTokenUsage(CLAUDE_DIR, tokenCache, titles));
+  wrap('tokenUsage', () => scanners.scanTokenUsage(CLAUDE_DIR, tokenCache, titles, sinceDayFor(period)));
   state.plan = await getPlanSection();
   state.generatedAt = Date.now();
   return state;
@@ -137,8 +144,41 @@ function revealFile(target, roots) {
   return { revealed: p };
 }
 
+function agentTemplate(name) {
+  return ['---', 'name: ' + name, 'description: Beschrijf wanneer deze agent gebruikt moet worden.',
+    'tools: Read, Grep, Glob', '---', '', 'Je bent ' + name + '. Beschrijf hier de instructies voor deze agent.', ''].join('\n');
+}
+function skillTemplate(name) {
+  return ['---', 'name: ' + name, 'description: Beschrijf wanneer deze skill gebruikt moet worden.',
+    '---', '', '# ' + name, '', 'Beschrijf hier de stappen van deze skill.', ''].join('\n');
+}
+
+// Maakt een nieuwe agent, skill of hook aan; het pad en de template worden
+// server-side bepaald zodat de browser geen paden hoeft te kennen.
+function createItem(body, roots) {
+  const what = String(body.what || '');
+  const scope = body.scope && body.scope !== 'globaal' ? String(body.scope) : null;
+  const base = scope ? path.join(scope, '.claude') : CLAUDE_DIR;
+  if (what === 'hook') {
+    const saved = actions.addHook(path.join(base, 'settings.json'), String(body.event || ''), String(body.matcher || ''), String(body.command || ''), roots);
+    return { created: saved };
+  }
+  const name = String(body.name || '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,60}$/.test(name)) {
+    throw new Error('naam: kleine letters, cijfers en strepen (bijv. mijn-agent)');
+  }
+  if (what === 'agent') {
+    return { created: actions.createFile(path.join(base, 'agents', name + '.md'), agentTemplate(name), roots) };
+  }
+  if (what === 'skill') {
+    return { created: actions.createFile(path.join(base, 'skills', name, 'SKILL.md'), skillTemplate(name), roots) };
+  }
+  throw new Error('onbekend type: ' + what);
+}
+
 const ACTIONS = {
   '/api/session/stop': (body) => stopSession(Number(body.pid)),
+  '/api/create': (body, roots) => createItem(body, roots),
   '/api/file/save': (body, roots) => ({ saved: actions.saveFile(body.path, String(body.content ?? ''), roots) }),
   '/api/file/delete': (body, roots) => ({ deleted: actions.deletePath(body.path, roots) }),
   '/api/file/reveal': (body, roots) => revealFile(body.path, roots),
@@ -167,7 +207,7 @@ const server = http.createServer(async (req, res) => {
 
   if (route === '/api/state') {
     try {
-      return send(res, 200, await buildState());
+      return send(res, 200, await buildState(parsed.searchParams.get('period')));
     } catch (err) {
       return send(res, 500, { error: String((err && err.message) || err) });
     }

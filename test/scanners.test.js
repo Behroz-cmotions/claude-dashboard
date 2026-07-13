@@ -334,8 +334,8 @@ test('scanWaiting falls back to the last assistant text when there is no questio
 
 test('scanTokenUsage aggregates tokens per project and session with percentages', () => {
   const dir = makeClaudeDir();
-  const mkLine = (inTok, outTok) => JSON.stringify({
-    type: 'assistant', timestamp: '2026-07-13T10:00:00Z',
+  const mkLine = (inTok, outTok, ts) => JSON.stringify({
+    type: 'assistant', timestamp: ts || '2026-07-13T10:00:00Z',
     message: { usage: { input_tokens: inTok, output_tokens: outTok, cache_creation_input_tokens: 5, cache_read_input_tokens: 100 } },
   });
   const projA = path.join(dir, 'projects', 'C--proj-a');
@@ -373,9 +373,38 @@ test('scanTokenUsage reuses cache entries when mtime and size are unchanged', ()
   const st = fs.statSync(file);
   const cache = new Map();
   // voorgekookte cache-entry met kloppende mtime/size: parse moet worden overgeslagen
-  cache.set(file, { mtimeMs: st.mtimeMs, size: st.size, totals: { input: 0, output: 999, cacheCreate: 0, cacheRead: 0 } });
+  cache.set(file, {
+    mtimeMs: st.mtimeMs, size: st.size,
+    totals: { input: 0, output: 999, cacheCreate: 0, cacheRead: 0, byDay: { '2026-07-13': { input: 0, output: 999 } } },
+  });
   const out = scanners.scanTokenUsage(dir, cache, {});
   assert.strictEqual(out.total, 999, 'cache-waarde gebruikt in plaats van het bestand te parsen');
+});
+
+test('scanTokenUsage filters by sinceDay using per-day buckets', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--p');
+  fs.mkdirSync(projDir, { recursive: true });
+  const mk = (out, ts) => JSON.stringify({
+    type: 'assistant', timestamp: ts,
+    message: { usage: { input_tokens: 0, output_tokens: out } },
+  });
+  fs.writeFileSync(path.join(projDir, 'oud.jsonl'), mk(500, '2026-06-01T09:00:00Z'));
+  fs.writeFileSync(path.join(projDir, 'mix.jsonl'), [
+    mk(100, '2026-06-01T09:00:00Z'),
+    mk(30, '2026-07-12T09:00:00Z'),
+    mk(70, '2026-07-13T09:00:00Z'),
+  ].join('\n'));
+
+  const all = scanners.scanTokenUsage(dir, new Map(), {});
+  assert.strictEqual(all.total, 700);
+
+  const recent = scanners.scanTokenUsage(dir, new Map(), {}, '2026-07-12');
+  assert.strictEqual(recent.total, 100, 'alleen 12 en 13 juli tellen mee');
+  assert.strictEqual(recent.bySession.mix, 100);
+  assert.strictEqual(recent.bySession.oud, 0);
+  assert.strictEqual(recent.projects.length, 1);
+  assert.strictEqual(recent.projects[0].sessions.length, 1, 'sessies zonder tokens in de periode verdwijnen');
 });
 
 test('scanHistory returns newest entries first, limited', () => {
