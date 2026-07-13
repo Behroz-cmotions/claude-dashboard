@@ -34,3 +34,41 @@ test('scanSessions returns only alive sessions, newest first', () => {
 test('scanSessions returns [] when sessions dir is missing', () => {
   assert.deepStrictEqual(scanners.scanSessions(makeClaudeDir()), []);
 });
+
+test('buildSessionTitles keeps the earliest prompt per session', () => {
+  const dir = makeClaudeDir();
+  const lines = [
+    { display: 'tweede prompt', timestamp: 200, sessionId: 'abc', project: 'C:\\p' },
+    { display: 'eerste prompt', timestamp: 100, sessionId: 'abc', project: 'C:\\p' },
+    { display: 'andere sessie', timestamp: 150, sessionId: 'def', project: 'C:\\p' },
+  ];
+  fs.writeFileSync(path.join(dir, 'history.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n'));
+  const titles = scanners.buildSessionTitles(dir);
+  assert.strictEqual(titles.abc.display, 'eerste prompt');
+  assert.strictEqual(titles.def.display, 'andere sessie');
+});
+
+test('scanProjects lists projects with sessions, titles and real path from cwd', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--proj-demo');
+  fs.mkdirSync(projDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projDir, 'sessie-1.jsonl'),
+    JSON.stringify({ cwd: 'C:\\proj demo', type: 'user' }) + '\n'
+  );
+  const titles = { 'sessie-1': { display: 'bouw een dashboard', timestamp: 1 } };
+  const out = scanners.scanProjects(dir, titles);
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].path, 'C:\\proj demo');
+  assert.strictEqual(out[0].sessionCount, 1);
+  assert.strictEqual(out[0].sessions[0].title, 'bouw een dashboard');
+});
+
+test('scanProjects falls back to dirName when no cwd found', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--leeg');
+  fs.mkdirSync(projDir, { recursive: true });
+  fs.writeFileSync(path.join(projDir, 's.jsonl'), '{"type":"summary"}\n');
+  const out = scanners.scanProjects(dir, {});
+  assert.strictEqual(out[0].path, 'C--leeg');
+});
