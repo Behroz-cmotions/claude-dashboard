@@ -6,195 +6,429 @@
 <title>Agentic OS</title>
 <style>
   :root {
-    --bg: #0b0e14; --panel: #131722; --panel-border: #1f2533;
-    --text: #d7dce5; --muted: #7d8698; --accent: #7aa2f7;
-    --ok: #9ece6a; --warn: #e0af68; --err: #f7768e; --idle: #565f89;
+    --bg: #0C0F16; --surface: #141926; --inset: #10151F; --line: #232B3D;
+    --ink: #E3E8F2; --ink-2: #98A2B8; --ink-3: #5F6A82;
+    --data: #5B8DEF;           /* gevalideerd op --surface (dark) */
+    --signal: #E8A33D;         /* busy / attentie */
+    --nominal: #63C577;        /* running / ok */
+    --idle: #566078;
+    --err: #E06C75;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", monospace;
+    --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; }
-  body {
-    background: var(--bg); color: var(--text);
-    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
-    padding: 20px; min-height: 100vh;
+  html { scrollbar-gutter: stable; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); min-height: 100vh; }
+
+  /* ── Ops-strip (signatuur) ─────────────────────────────── */
+  .ops {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    padding: 12px 24px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
   }
-  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
-  header h1 { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
-  header h1 span { color: var(--accent); }
-  #conn { font-size: 12px; color: var(--muted); }
+  .wordmark { font: 700 15px/1 var(--mono); letter-spacing: 2px; white-space: nowrap; }
+  .wordmark em { font-style: normal; color: var(--data); }
+  .kpis { display: flex; gap: 28px; flex-wrap: wrap; }
+  .kpi { display: flex; flex-direction: column; gap: 1px; }
+  .kpi .v { font: 600 17px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+  .kpi .v .unit { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+  .kpi .l { font: 400 10px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); }
+  #conn { margin-left: auto; font: 400 11px/1 var(--mono); color: var(--ink-2); display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  #conn .beacon { width: 7px; height: 7px; border-radius: 50%; background: var(--nominal); animation: pulse 2s ease-in-out infinite; }
   #conn.lost { color: var(--err); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
-  .panel {
-    background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 10px; padding: 14px 16px; overflow: hidden;
+  #conn.lost .beacon { background: var(--err); animation: none; }
+
+  /* ── Secties & panelen ─────────────────────────────────── */
+  main { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 26px; max-width: 1800px; margin: 0 auto; }
+  .zone > .zone-label {
+    font: 400 10px/1 var(--mono); letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
   }
+  .zone > .zone-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .grid { display: grid; gap: 14px; }
+  .g-now { grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); }
+  .g-usage { grid-template-columns: 2fr 1fr; }
+  .g-ref { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  @media (max-width: 900px) { .g-usage { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
   .panel h2 {
-    font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
-    color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between;
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
+    font: 600 11px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-2);
   }
-  .panel h2 .count { color: var(--accent); }
-  .panel.wide { grid-column: 1 / -1; }
+  .panel h2::before { content: "▪"; color: var(--data); font-size: 9px; }
+  .panel h2 .count { margin-left: auto; color: var(--data); font-variant-numeric: tabular-nums; }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 8px 3px 0; }
-  td { padding: 3px 8px 3px 0; border-top: 1px solid var(--panel-border); vertical-align: top; }
-  td.mono, .mono { font-family: Consolas, monospace; font-size: 12px; }
-  .muted { color: var(--muted); }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .dot.running { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
-  .dot.idle { background: var(--idle); }
-  .dot.other { background: var(--warn); }
-  .badge {
-    display: inline-block; padding: 1px 8px; border-radius: 10px;
-    font-size: 11px; background: #1e2436; color: var(--accent);
-  }
-  .empty, .error { color: var(--muted); font-style: italic; padding: 6px 0; }
+  th { text-align: left; color: var(--ink-3); font: 400 10px/1.6 var(--mono); letter-spacing: 1px; text-transform: uppercase; padding: 2px 10px 4px 0; }
+  td { padding: 5px 10px 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .mono { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-2); }
+  .dim { color: var(--ink-3); }
+  .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ellipsis { max-width: 0; width: 99%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; font: 500 11px/1.4 var(--mono); background: var(--inset); border: 1px solid var(--line); white-space: nowrap; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .pill.busy { color: var(--signal); } .pill.busy .dot { background: var(--signal); animation: pulse 1.2s ease-in-out infinite; }
+  .pill.idle { color: var(--ink-2); } .pill.idle .dot { background: var(--idle); }
+  .pill.run  { color: var(--nominal); } .pill.run .dot { background: var(--nominal); animation: pulse 1.2s ease-in-out infinite; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font: 500 11px/1.5 var(--mono); background: var(--inset); border: 1px solid var(--line); color: var(--ink-2); }
+
+  .empty, .error { color: var(--ink-3); font-style: italic; padding: 6px 0; font-size: 13px; }
   .error { color: var(--err); }
-  .ellipsis { max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  details summary { cursor: pointer; color: var(--accent); font-size: 13px; padding: 4px 0; list-style: none; }
-  details summary::before { content: "▸ "; }
-  details[open] summary::before { content: "▾ "; }
-  details table { margin: 4px 0 8px 14px; width: calc(100% - 14px); }
+
+  /* ── Grafiek & bar-lists ───────────────────────────────── */
+  .chart-wrap { position: relative; }
+  .chart-svg { display: block; width: 100%; height: auto; }
+  .chart-svg .bar { fill: var(--data); }
+  .chart-svg .bar:hover { fill: color-mix(in srgb, var(--data) 80%, white); }
+  .chart-svg .gridline { stroke: var(--line); stroke-width: 1; }
+  .chart-svg text { font: 400 10px var(--mono); fill: var(--ink-3); }
+  #tooltip {
+    position: fixed; z-index: 50; pointer-events: none; display: none;
+    background: var(--inset); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 10px; font: 400 12px/1.5 var(--mono); color: var(--ink);
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  }
+  .barlist { display: flex; flex-direction: column; gap: 7px; }
+  .barlist .row { display: grid; grid-template-columns: minmax(90px, auto) 1fr auto; align-items: center; gap: 10px; font-size: 12px; }
+  .barlist .label { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .barlist .track { height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; }
+  .barlist .fill { height: 100%; border-radius: 3px; background: var(--data); min-width: 2px; }
+  .barlist .val { font: 400 11px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  details.tableview summary { cursor: pointer; font: 400 11px var(--mono); color: var(--ink-3); margin-top: 8px; }
+  details.tableview summary:hover { color: var(--ink-2); }
+
+  details.proj summary { cursor: pointer; padding: 6px 0; list-style: none; display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--line); }
+  details.proj:first-of-type summary { border-top: none; }
+  details.proj summary::before { content: "▸"; color: var(--ink-3); font-size: 11px; }
+  details.proj[open] summary::before { content: "▾"; }
+  details.proj summary .pname { font-family: var(--mono); font-size: 13px; }
+  details.proj summary .pmeta { margin-left: auto; font: 400 11px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  details.proj table { margin: 2px 0 10px 18px; width: calc(100% - 18px); }
+  summary:focus-visible, a:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
+
+  .duo { display: flex; flex-direction: column; gap: 14px; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pill .dot, #conn .beacon { animation: none !important; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Agentic <span>OS</span></h1>
-  <div id="conn">verbinden…</div>
+<header class="ops">
+  <div class="wordmark">AGENTIC<em>//</em>OS</div>
+  <div class="kpis">
+    <div class="kpi"><span class="v" id="k-sessions">–</span><span class="l">sessies actief</span></div>
+    <div class="kpi"><span class="v" id="k-busy">–</span><span class="l">aan het werk</span></div>
+    <div class="kpi"><span class="v" id="k-tasks">–</span><span class="l">bg-tasks</span></div>
+    <div class="kpi"><span class="v" id="k-tokens">–</span><span class="l" id="k-tokens-l">tokens</span></div>
+  </div>
+  <div id="conn"><span class="beacon"></span><span id="conn-t">verbinden…</span></div>
 </header>
-<div class="grid">
-  <div class="panel" id="p-sessions"><h2>Actieve sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel" id="p-running-agents"><h2>Running agents <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel" id="p-tasks"><h2>Background tasks <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel" id="p-agents"><h2>Agents <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel wide" id="p-projects"><h2>Projecten &amp; sessies <span class="count"></span></h2><div class="body"></div></div>
-  <div class="panel wide" id="p-history"><h2>Recente prompts <span class="count"></span></h2><div class="body"></div></div>
-</div>
+
+<main>
+  <section class="zone">
+    <div class="zone-label">Nu</div>
+    <div class="grid g-now">
+      <div class="panel" id="p-sessions"><h2>Sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-activity"><h2>Live activiteit <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-running-agents"><h2>Running agents <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-tasks"><h2>Background tasks <span class="count"></span></h2><div class="body"></div></div>
+    </div>
+  </section>
+
+  <section class="zone">
+    <div class="zone-label">Verbruik</div>
+    <div class="grid g-usage">
+      <div class="panel" id="p-usage-chart"><h2>Tokens per dag <span class="count"></span></h2><div class="body"></div></div>
+      <div class="duo">
+        <div class="panel" id="p-usage-models"><h2>Per model <span class="count"></span></h2><div class="body"></div></div>
+        <div class="panel" id="p-usage-tools"><h2>Meest gebruikte tools <span class="count"></span></h2><div class="body"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="zone">
+    <div class="zone-label">Naslag</div>
+    <div class="grid g-ref">
+      <div class="panel" id="p-agents"><h2>Agents <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-skills"><h2>Skills &amp; plugins <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-mcp"><h2>MCP-servers <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span></h2><div class="body"></div></div>
+    </div>
+  </section>
+
+  <section class="zone">
+    <div class="zone-label">Archief</div>
+    <div class="grid">
+      <div class="panel" id="p-projects"><h2>Projecten &amp; sessies <span class="count"></span></h2><div class="body"></div></div>
+      <div class="panel" id="p-history"><h2>Recente prompts <span class="count"></span></h2><div class="body"></div></div>
+    </div>
+  </section>
+</main>
+<div id="tooltip"></div>
+
 <script>
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+const nf = new Intl.NumberFormat('nl-NL');
+function compact(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+  return String(n);
+}
 function ago(ts) {
   if (!ts) return '';
-  const d = Date.now() - ts;
-  if (d < 60e3) return Math.round(d / 1e3) + 's geleden';
-  if (d < 3600e3) return Math.round(d / 60e3) + 'm geleden';
-  if (d < 86400e3) return Math.round(d / 3600e3) + 'u geleden';
-  return Math.round(d / 86400e3) + 'd geleden';
+  const t = typeof ts === 'string' ? Date.parse(ts) : ts;
+  const d = Date.now() - t;
+  if (d < 60e3) return Math.max(0, Math.round(d / 1e3)) + 's';
+  if (d < 3600e3) return Math.round(d / 60e3) + 'm';
+  if (d < 86400e3) return Math.round(d / 3600e3) + 'u';
+  return Math.round(d / 86400e3) + 'd';
 }
-
+function pill(status) {
+  const cls = status === 'busy' || status === 'running' ? 'busy' : status === 'idle' ? 'idle' : 'run';
+  return '<span class="pill ' + cls + '"><span class="dot"></span>' + esc(status || '?') + '</span>';
+}
 function panel(id, section, render) {
   const el = document.querySelector(id);
   const body = el.querySelector('.body');
   const count = el.querySelector('.count');
   if (!section) { body.innerHTML = '<div class="empty">geen data</div>'; return; }
-  if (section.error) { body.innerHTML = '<div class="error">fout: ' + esc(section.error) + '</div>'; count.textContent = ''; return; }
-  const data = section.data || [];
-  count.textContent = data.length || '';
-  body.innerHTML = data.length ? render(data) : '<div class="empty">geen items</div>';
+  if (section.error) { body.innerHTML = '<div class="error">' + esc(section.error) + '</div>'; count.textContent = ''; return; }
+  const data = section.data;
+  const n = Array.isArray(data) ? data.length : null;
+  count.textContent = n == null ? '' : n;
+  body.innerHTML = (Array.isArray(data) && !data.length) ? '<div class="empty">geen items</div>' : render(data);
 }
 
-function dotFor(status) {
-  if (status === 'running' || status === 'busy') return '<span class="dot running"></span>';
-  if (status === 'idle') return '<span class="dot idle"></span>';
-  return '<span class="dot other"></span>';
-}
-
+/* ── renderers ─────────────────────────────────────────── */
 function renderSessions(data) {
-  return '<table><tr><th></th><th>Naam</th><th>Map</th><th>Status</th><th>Actief</th></tr>' +
+  return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Actief</th></tr>' +
     data.map((s) =>
-      '<tr><td>' + dotFor(s.status) + '</td><td>' + esc(s.name) +
-      ' <span class="muted mono">pid ' + esc(s.pid) + '</span></td>' +
-      '<td class="mono ellipsis" title="' + esc(s.cwd) + '">' + esc(s.cwd) + '</td>' +
-      '<td>' + esc(s.status) + '</td><td class="muted">' + ago(s.updatedAt) + '</td></tr>'
+      '<tr><td style="white-space:nowrap">' + esc(s.name || (s.sessionId || '').slice(0, 8)) +
+      ' <span class="dim mono">' + esc(s.pid) + '</span></td>' +
+      '<td class="mono muted ellipsis" title="' + esc(s.cwd) + '">' + esc((s.cwd || '').split('\\').pop()) + '</td>' +
+      '<td>' + pill(s.status) + '</td><td class="num muted">' + ago(s.updatedAt) + '</td></tr>'
     ).join('') + '</table>';
 }
-
+function renderActivity(data) {
+  return '<table><tr><th>Sessie</th><th>Laatste actie</th></tr>' +
+    data.map((a) =>
+      '<tr><td style="white-space:nowrap">' + esc(a.name || (a.sessionId || '').slice(0, 8)) +
+      (a.lastTool ? '<div><span class="tag">' + esc(a.lastTool) + '</span></div>' : '') + '</td>' +
+      '<td class="muted" style="font-size:12.5px">' + esc(a.lastText || '—') + '</td></tr>'
+    ).join('') + '</table>';
+}
 function renderRunningAgents(data) {
-  return '<table><tr><th>Naam</th><th>Soort</th><th>Actief</th></tr>' +
+  return '<table><tr><th>Naam</th><th>Soort</th><th class="num">Actief</th></tr>' +
     data.map((s) =>
-      '<tr><td>' + dotFor(s.status) + esc(s.name) + '</td><td><span class="badge">' + esc(s.kind) + '</span></td>' +
-      '<td class="muted">' + ago(s.updatedAt) + '</td></tr>'
+      '<tr><td>' + esc(s.name || s.sessionId) + '</td><td><span class="tag">' + esc(s.kind) + '</span></td>' +
+      '<td class="num muted">' + ago(s.updatedAt) + '</td></tr>'
     ).join('') + '</table>';
 }
-
 function renderTasks(data) {
-  return '<table><tr><th>Taak</th><th>Sessie</th><th>Activiteit</th></tr>' +
+  return '<table><tr><th>Taak</th><th>Sessie</th><th class="num">Activiteit</th></tr>' +
     data.map((t) =>
-      '<tr><td class="mono">' + esc(t.id) + '</td>' +
-      '<td class="mono muted">' + esc(t.linkedSession || '—') + '</td>' +
-      '<td class="muted">' + ago(t.lastActivity) + '</td></tr>'
+      '<tr><td class="mono ellipsis">' + esc(t.id) + '</td>' +
+      '<td class="mono dim">' + esc(t.linkedSession ? t.linkedSession.slice(0, 8) : '—') + '</td>' +
+      '<td class="num muted">' + ago(t.lastActivity) + '</td></tr>'
     ).join('') + '</table>';
 }
-
 function renderAgents(data) {
   return '<table><tr><th>Naam</th><th>Scope</th></tr>' +
     data.map((a) =>
-      '<tr><td><b>' + esc(a.name) + '</b><div class="muted ellipsis" title="' + esc(a.description) + '">' +
-      esc(a.description) + '</div></td>' +
-      '<td><span class="badge">' + esc(a.scope === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+      '<tr><td><span class="mono">' + esc(a.name) + '</span>' +
+      (a.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(a.description) + '">' + esc(a.description) + '</div>' : '') +
+      '</td><td><span class="tag">' + esc(a.scope === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
     ).join('') + '</table>';
 }
-
 function renderHooks(data) {
-  return '<table><tr><th>Event</th><th>Commando</th><th>Bron</th></tr>' +
+  return '<table><tr><th>Event</th><th>Commando</th></tr>' +
     data.map((h) =>
-      '<tr><td><span class="badge">' + esc(h.event) + (h.matcher ? ' · ' + esc(h.matcher) : '') + '</span></td>' +
-      '<td class="mono ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td>' +
-      '<td><span class="muted">' + esc(h.source === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+      '<tr><td style="white-space:nowrap"><span class="tag">' + esc(h.event) + '</span>' +
+      (h.matcher ? ' <span class="dim mono">' + esc(h.matcher) + '</span>' : '') + '</td>' +
+      '<td class="mono muted ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td></tr>'
     ).join('') + '</table>';
 }
-
+function renderSkills(data) {
+  const skills = data.skills || [];
+  const plugins = data.plugins || [];
+  let html = '<table><tr><th>Skill</th></tr>' +
+    skills.map((s) =>
+      '<tr><td><span class="mono">' + esc(s.name) + '</span>' +
+      (s.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(s.description) + '">' + esc(s.description) + '</div>' : '') +
+      '</td></tr>'
+    ).join('') + '</table>';
+  if (plugins.length) {
+    html += '<div style="margin-top:10px">' + plugins.map((p) =>
+      '<span class="tag" style="margin:0 6px 6px 0;' + (p.enabled ? '' : 'opacity:.45') + '">' + esc(p.name.split('@')[0]) + '</span>'
+    ).join('') + '</div>';
+  }
+  return html;
+}
+function renderMcp(data) {
+  return '<table><tr><th>Server</th><th>Type</th><th>Scope</th></tr>' +
+    data.map((m) =>
+      '<tr><td class="mono">' + esc(m.name) +
+      (m.detail ? '<div class="dim ellipsis" style="font-size:11px" title="' + esc(m.detail) + '">' + esc(m.detail) + '</div>' : '') +
+      '</td><td><span class="tag">' + esc(m.type) + '</span></td>' +
+      '<td><span class="tag">' + esc(m.scope === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+    ).join('') + '</table>';
+}
 function renderLoops(data) {
   return '<table><tr><th>Naam</th><th>Pad</th></tr>' +
     data.map((l) =>
-      '<tr><td>' + esc(l.name) + '</td><td class="mono muted">' + esc(l.path) + '</td></tr>'
+      '<tr><td>' + esc(l.name) + '</td><td class="mono dim ellipsis">' + esc(l.path) + '</td></tr>'
     ).join('') + '</table>';
 }
-
 function renderProjects(data) {
   return data.map((p, i) =>
-    '<details' + (i === 0 ? ' open' : '') + '><summary>' + esc(p.path) +
-    ' <span class="muted">· ' + p.sessionCount + ' sessies · ' + ago(p.lastActivity) + '</span></summary>' +
-    '<table><tr><th>Sessie</th><th>Titel</th><th>Laatste activiteit</th><th>Grootte</th></tr>' +
+    '<details class="proj"' + (i === 0 ? ' open' : '') + '><summary>' +
+    '<span class="pname">' + esc((p.path || '').split('\\').pop() || p.path) + '</span>' +
+    '<span class="muted ellipsis" style="font-size:12px">' + esc(p.path) + '</span>' +
+    '<span class="pmeta">' + p.sessionCount + ' · ' + ago(p.lastActivity) + '</span></summary>' +
+    '<table><tr><th>Sessie</th><th>Titel</th><th class="num">Activiteit</th><th class="num">Grootte</th></tr>' +
     p.sessions.map((s) =>
-      '<tr><td class="mono muted">' + esc(s.sessionId.slice(0, 8)) + '</td>' +
+      '<tr><td class="mono dim">' + esc(s.sessionId.slice(0, 8)) + '</td>' +
       '<td class="ellipsis" title="' + esc(s.title) + '">' + esc(s.title || '—') + '</td>' +
-      '<td class="muted">' + ago(s.mtime) + '</td>' +
-      '<td class="muted">' + Math.round(s.size / 1024) + ' kB</td></tr>'
+      '<td class="num muted">' + ago(s.mtime) + '</td>' +
+      '<td class="num dim">' + compact(s.size) + 'B</td></tr>'
     ).join('') + '</table></details>'
   ).join('');
 }
-
 function renderHistory(data) {
-  return '<table><tr><th>Wanneer</th><th>Project</th><th>Prompt</th></tr>' +
+  return '<table><tr><th class="num">T</th><th>Project</th><th>Prompt</th></tr>' +
     data.map((h) =>
-      '<tr><td class="muted" style="white-space:nowrap">' + ago(h.timestamp) + '</td>' +
-      '<td class="mono muted ellipsis" title="' + esc(h.project) + '">' + esc((h.project || '').split('\\').pop()) + '</td>' +
-      '<td class="ellipsis" style="max-width:600px" title="' + esc(h.display) + '">' + esc(h.display) + '</td></tr>'
+      '<tr><td class="num muted">' + ago(h.timestamp) + '</td>' +
+      '<td class="mono dim" style="white-space:nowrap">' + esc((h.project || '').split('\\').pop()) + '</td>' +
+      '<td class="ellipsis" title="' + esc(h.display) + '">' + esc(h.display) + '</td></tr>'
     ).join('') + '</table>';
 }
 
+/* ── usage: grafiek + bar-lists ────────────────────────── */
+const tooltip = document.getElementById('tooltip');
+function showTip(evt, html) {
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  tooltip.style.left = Math.min(evt.clientX + 14, window.innerWidth - 180) + 'px';
+  tooltip.style.top = (evt.clientY - 10) + 'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+function renderUsageChart(u) {
+  const days = u.days || [];
+  if (!days.length) return '<div class="empty">geen usage-data</div>';
+  const W = 640, H = 170, padL = 44, padB = 22, padT = 12;
+  const max = Math.max(...days.map((d) => d.tokens), 1);
+  const iw = (W - padL - 8) / days.length;
+  const bw = Math.max(4, iw - 2); // 2px tussenruimte
+  const y = (v) => padT + (H - padT - padB) * (1 - v / max);
+  let svg = '<svg class="chart-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Tokens per dag">';
+  for (const f of [0.5, 1]) {
+    svg += '<line class="gridline" x1="' + padL + '" x2="' + W + '" y1="' + y(max * f) + '" y2="' + y(max * f) + '"/>' +
+      '<text x="' + (padL - 6) + '" y="' + (y(max * f) + 3) + '" text-anchor="end">' + compact(max * f) + '</text>';
+  }
+  days.forEach((d, i) => {
+    const x = padL + i * iw + 1;
+    const yTop = y(d.tokens);
+    const h = Math.max(1, H - padB - yTop);
+    svg += '<rect class="bar" data-i="' + i + '" x="' + x + '" y="' + yTop + '" width="' + bw + '" height="' + h + '" rx="2"/>';
+  });
+  svg += '<line class="gridline" x1="' + padL + '" x2="' + W + '" y1="' + (H - padB) + '" y2="' + (H - padB) + '"/>';
+  const lbl = (i) => '<text x="' + (padL + i * iw + bw / 2) + '" y="' + (H - 6) + '" text-anchor="middle">' + days[i].day.slice(5) + '</text>';
+  svg += lbl(0);
+  if (days.length > 2) svg += lbl(Math.floor(days.length / 2));
+  if (days.length > 1) svg += lbl(days.length - 1);
+  svg += '</svg>';
+  svg += '<details class="tableview"><summary>als tabel</summary><table><tr><th>Dag</th><th class="num">Tokens</th><th class="num">Turns</th></tr>' +
+    days.map((d) => '<tr><td class="mono">' + esc(d.day) + '</td><td class="num">' + nf.format(d.tokens) + '</td><td class="num muted">' + nf.format(d.turns) + '</td></tr>').join('') +
+    '</table></details>';
+  return svg;
+}
+function barlist(rows, labelKey, valKey, fmtVal) {
+  const max = Math.max(...rows.map((r) => r[valKey]), 1);
+  return '<div class="barlist">' + rows.map((r) =>
+    '<div class="row"><span class="label" title="' + esc(r[labelKey]) + '">' + esc(r[labelKey]) + '</span>' +
+    '<span class="track"><span class="fill" style="width:' + Math.max(1, Math.round((r[valKey] / max) * 100)) + '%"></span></span>' +
+    '<span class="val">' + fmtVal(r[valKey]) + '</span></div>'
+  ).join('') + '</div>';
+}
+function renderModels(u) {
+  const models = (u.models || []).filter((m) => m.model);
+  if (!models.length) return '<div class="empty">geen data</div>';
+  return barlist(models.map((m) => ({ ...m, model: m.model.replace(/^claude-/, '') })), 'model', 'tokens', compact);
+}
+function renderTools(u) {
+  const tools = (u.tools || []).map((t) => ({ ...t, tool: t.tool.replace(/^mcp__.*__/, 'mcp:') }));
+  if (!tools.length) return '<div class="empty">geen data</div>';
+  return barlist(tools, 'tool', 'uses', nf.format.bind(nf));
+}
+
+/* ── refresh ───────────────────────────────────────────── */
+let usageDataForTip = [];
 async function refresh() {
   const conn = document.getElementById('conn');
+  const connT = document.getElementById('conn-t');
   try {
     const res = await fetch('/api/state');
     const state = await res.json();
-    conn.textContent = 'live · ' + new Date(state.generatedAt).toLocaleTimeString('nl-NL');
     conn.classList.remove('lost');
+    connT.textContent = 'live ' + new Date(state.generatedAt).toLocaleTimeString('nl-NL');
+
+    const sessions = (state.sessions && state.sessions.data) || [];
+    const busy = sessions.filter((s) => s.status === 'busy' || s.status === 'running').length;
+    document.getElementById('k-sessions').textContent = sessions.length;
+    document.getElementById('k-busy').textContent = busy;
+    document.getElementById('k-tasks').textContent = ((state.tasks && state.tasks.data) || []).length;
+    const u = (state.usage && state.usage.data) || null;
+    if (u && u.days && u.days.length) {
+      const last = u.days[u.days.length - 1];
+      document.getElementById('k-tokens').innerHTML = compact(last.tokens) + ' <span class="unit">tok</span>';
+      document.getElementById('k-tokens-l').textContent = 'tokens · ' + last.day.slice(5);
+      usageDataForTip = u.days;
+    } else {
+      document.getElementById('k-tokens').textContent = '–';
+    }
+
     panel('#p-sessions', state.sessions, renderSessions);
+    panel('#p-activity', state.activity, renderActivity);
     panel('#p-running-agents', state.runningAgents, renderRunningAgents);
     panel('#p-tasks', state.tasks, renderTasks);
+    panel('#p-usage-chart', state.usage, renderUsageChart);
+    panel('#p-usage-models', state.usage, renderModels);
+    panel('#p-usage-tools', state.usage, renderTools);
     panel('#p-agents', state.agents, renderAgents);
     panel('#p-hooks', state.hooks, renderHooks);
+    panel('#p-skills', state.skills, renderSkills);
+    panel('#p-mcp', state.mcpServers, renderMcp);
     panel('#p-loops', state.loops, renderLoops);
     panel('#p-projects', state.projects, renderProjects);
     panel('#p-history', state.history, renderHistory);
+    document.querySelector('#p-usage-chart .count').textContent =
+      u && u.today ? nf.format(u.today.tokens) + ' vandaag' : '';
   } catch {
-    conn.textContent = 'verbinding kwijt — opnieuw proberen…';
     conn.classList.add('lost');
+    connT.textContent = 'verbinding kwijt';
   }
 }
-
+document.addEventListener('mouseover', (e) => {
+  const bar = e.target.closest('.bar');
+  if (bar && usageDataForTip[bar.dataset.i]) {
+    const d = usageDataForTip[bar.dataset.i];
+    showTip(e, esc(d.day) + '<br><b>' + nf.format(d.tokens) + '</b> tokens · ' + nf.format(d.turns) + ' turns');
+  }
+});
+document.addEventListener('mousemove', (e) => {
+  if (tooltip.style.display === 'block' && !e.target.closest('.bar')) hideTip();
+});
 refresh();
 setInterval(refresh, 3000);
 </script>
