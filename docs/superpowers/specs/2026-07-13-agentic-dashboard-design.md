@@ -93,3 +93,40 @@ Alles blijft read-only, 127.0.0.1, foutisolatie per paneel.
 - `scanPlan(claudeDir, fetcher)` — fetcher injecteerbaar voor tests; het OAuth-token blijft strikt server-side en komt nooit in `/api/state`.
 - Server cachet het API-antwoord 60 seconden (max 1 call/minuut i.p.v. elke poll).
 - KPI's "sessie-limiet" en "weeklimiet" in de ops-strip.
+
+---
+
+# V4 — Acties, viewer/editor, waiting en recente bestanden (2026-07-13)
+
+Op basis van `ideeen/md`. Het dashboard gaat van read-only naar **read-write met procesbeheer**. Dat vraagt een expliciet veiligheidsmodel.
+
+## Veiligheidsmodel (nieuw, verplicht)
+
+- **Actietoken**: de server genereert bij het starten een willekeurig token (`crypto.randomUUID`), zet het in de geserveerde HTML, en eist het op élke muterende request in de header `X-Dashboard-Token`. Een custom header dwingt een CORS-preflight af, die de server niet toestaat voor cross-origin — daarmee kan geen enkele website die de gebruiker bezoekt acties op het dashboard uitvoeren.
+- **Padgrens**: alle bestandsacties (lezen, schrijven, verwijderen) worden gevalideerd met `isAllowedPath(target, roots)`: het gerealiseerde pad (`path.resolve`) moet binnen `~/.claude` of binnen een bekend projectpad liggen. Alles daarbuiten → HTTP 403. Beschermt tegen path traversal (`..`).
+- **Bevestiging in de UI** vóór elke destructieve actie (sessie stoppen, item verwijderen).
+- Alle muterende routes zijn `POST`; `GET` blijft read-only.
+
+## Nieuwe routes
+
+| Route | Doet |
+|---|---|
+| `POST /api/session/stop` `{pid}` | Stopt de sessie: `process.kill(pid)`. Alleen PID's die in `sessions/` voorkomen. |
+| `GET /api/file?path=…` | Leest een bestand binnen de padgrens; geeft inhoud + of het schrijfbaar is. |
+| `POST /api/file/save` `{path, content}` | Schrijft het bestand binnen de padgrens. |
+| `POST /api/file/delete` `{path}` | Verwijdert bestand of map (recursief) binnen de padgrens. |
+| `POST /api/hook/delete` `{source, event, command}` | Verwijdert één hook uit de betreffende `settings.json`; laat de rest van het bestand intact. |
+| `POST /api/file/reveal` `{path}` | Opent het bestand met de standaardapplicatie van het OS (`explorer` op Windows). |
+
+## Nieuwe/uitgebreide scanners
+
+- `scanRecentFiles(claudeDir, limit)` — recent door Claude aangemaakte/gewijzigde bestanden uit `~/.claude/file-history` (submappen per sessie, versies als `<hash>@vN`), met pad, sessie en tijdstip. Gesorteerd op recentheid.
+- `scanWaiting(claudeDir, sessions)` — sessies met status `waiting`; haalt uit het transcript de laatste openstaande vraag (`AskUserQuestion`-input of de laatste assistent-tekst) en de aangeboden opties.
+- Bestaande scanners krijgen een `path`-veld (agents, skills, loops) en hooks een `source`-pad, zodat viewer/editor en verwijderen weten welk bestand ze raken. Scope (globaal/project) was er al en wordt prominenter getoond.
+
+## Frontend
+
+- Rij-acties: elk item in agents/skills/hooks/loops/sessies krijgt icoonknoppen (bekijk/bewerk, verwijder). Sessies krijgen "stop".
+- **Bestandsviewer** als modal: toont de inhoud met een bewerkmodus en "opslaan"; toont het volledige pad en de scope.
+- **Wachtend**-paneel: sessie, de vraag, de opties, en een kopieerknop voor het antwoord. Beantwoorden gebeurt in de terminal (geen keystroke-injectie: te fragiel, kan input in het verkeerde venster zetten).
+- **Recente bestanden**-paneel: pad, sessie, tijdstip, met "inzien" en "openen".
