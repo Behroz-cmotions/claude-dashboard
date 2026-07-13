@@ -136,6 +136,98 @@ test('scanLoops finds cron/schedule-like entries, else empty', () => {
   assert.deepStrictEqual(scanners.scanLoops(dir).map((l) => l.name), ['cron']);
 });
 
+test('scanUsage aggregates tokens per day, model and tool from usage.db', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = makeClaudeDir();
+  const db = new DatabaseSync(path.join(dir, 'usage.db'));
+  db.exec(`CREATE TABLE turns (
+    id INTEGER PRIMARY KEY, session_id TEXT, timestamp TEXT, model TEXT,
+    input_tokens INT, output_tokens INT, cache_read_tokens INT, cache_creation_tokens INT,
+    tool_name TEXT, cwd TEXT, message_id TEXT)`);
+  const ins = db.prepare(
+    "INSERT INTO turns (session_id, timestamp, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_name) VALUES (?, datetime('now'), ?, ?, ?, 0, 0, ?)"
+  );
+  ins.run('s1', 'claude-fable-5', 10, 100, 'Bash');
+  ins.run('s1', 'claude-fable-5', 5, 50, 'Bash');
+  ins.run('s2', 'claude-haiku-4-5', 1, 10, 'Read');
+  db.close();
+  const out = scanners.scanUsage(dir);
+  assert.strictEqual(out.days.length, 1);
+  assert.strictEqual(out.days[0].tokens, 176);
+  assert.strictEqual(out.models[0].model, 'claude-fable-5');
+  assert.strictEqual(out.models[0].tokens, 165);
+  assert.strictEqual(out.tools[0].tool, 'Bash');
+  assert.strictEqual(out.tools[0].uses, 2);
+  assert.strictEqual(out.today.tokens, 176);
+  assert.strictEqual(out.today.turns, 3);
+});
+
+test('scanUsage returns empty aggregates when usage.db is missing', () => {
+  const out = scanners.scanUsage(makeClaudeDir());
+  assert.deepStrictEqual(out.days, []);
+  assert.strictEqual(out.today.tokens, 0);
+});
+
+test('scanActivity extracts last tool and text per active session', () => {
+  const dir = makeClaudeDir();
+  const projDir = path.join(dir, 'projects', 'C--demo');
+  fs.mkdirSync(projDir, { recursive: true });
+  const lines = [
+    { type: 'assistant', timestamp: '2026-07-13T10:00:00Z', message: { content: [{ type: 'text', text: 'Ik ga de tests draaien.' }] } },
+    { type: 'assistant', timestamp: '2026-07-13T10:00:05Z', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } },
+    { type: 'user', timestamp: '2026-07-13T10:00:06Z', message: { content: [{ type: 'tool_result', content: 'ok' }] } },
+  ];
+  fs.writeFileSync(path.join(projDir, 'sess-1.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n'));
+  const sessions = [{ sessionId: 'sess-1', name: 'demo-sessie', status: 'busy' }];
+  const out = scanners.scanActivity(dir, sessions);
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].sessionId, 'sess-1');
+  assert.strictEqual(out[0].lastTool, 'Bash');
+  assert.strictEqual(out[0].lastText, 'Ik ga de tests draaien.');
+});
+
+test('scanSkills lists skill dirs with frontmatter and enabled plugins', () => {
+  const dir = makeClaudeDir();
+  fs.mkdirSync(path.join(dir, 'skills', 'factuur'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'skills', 'factuur', 'SKILL.md'),
+    '---\nname: factuur\ndescription: Maak een dansfactuur\n---\n'
+  );
+  fs.mkdirSync(path.join(dir, 'skills', 'zonder-md'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'settings.json'),
+    JSON.stringify({ enabledPlugins: { 'superpowers@claude-plugins-official': true, 'uit@x': false } })
+  );
+  const out = scanners.scanSkills(dir);
+  assert.strictEqual(out.skills.length, 2);
+  assert.strictEqual(out.skills[0].name, 'factuur');
+  assert.strictEqual(out.skills[0].description, 'Maak een dansfactuur');
+  assert.strictEqual(out.skills[1].name, 'zonder-md');
+  assert.deepStrictEqual(out.plugins, [{ name: 'superpowers@claude-plugins-official', enabled: true }, { name: 'uit@x', enabled: false }]);
+});
+
+test('scanMcpServers reads global and project servers from .claude.json', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-home-'));
+  fs.writeFileSync(
+    path.join(home, '.claude.json'),
+    JSON.stringify({
+      mcpServers: { globalsrv: { type: 'stdio', command: 'npx globalsrv --key sk-abc123def456ghij' } },
+      projects: {
+        'C:\\proj-a': { mcpServers: { notion: { type: 'http', url: 'https://mcp.notion.com' } } },
+        'C:\\proj-b': {},
+      },
+    })
+  );
+  const out = scanners.scanMcpServers(home);
+  assert.strictEqual(out.length, 2);
+  const glob = out.find((s) => s.name === 'globalsrv');
+  assert.strictEqual(glob.scope, 'globaal');
+  assert.ok(glob.detail.includes('••••'));
+  const notion = out.find((s) => s.name === 'notion');
+  assert.strictEqual(notion.scope, 'C:\\proj-a');
+  assert.strictEqual(notion.detail, 'https://mcp.notion.com');
+});
+
 test('scanHistory returns newest entries first, limited', () => {
   const dir = makeClaudeDir();
   const lines = [];
