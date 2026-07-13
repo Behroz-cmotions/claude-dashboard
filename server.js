@@ -33,6 +33,10 @@ function buildState() {
   wrap('runningAgents', () =>
     ((state.sessions && state.sessions.data) || []).filter((s) => s.kind && s.kind !== 'interactive')
   );
+  wrap('usage', () => scanners.scanUsage(CLAUDE_DIR));
+  wrap('activity', () => scanners.scanActivity(CLAUDE_DIR, (state.sessions && state.sessions.data) || []));
+  wrap('skills', () => scanners.scanSkills(CLAUDE_DIR));
+  wrap('mcpServers', () => scanners.scanMcpServers(path.dirname(CLAUDE_DIR)));
   state.generatedAt = Date.now();
   return state;
 }
