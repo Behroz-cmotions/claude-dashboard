@@ -228,6 +228,48 @@ test('scanMcpServers reads global and project servers from .claude.json', () => 
   assert.strictEqual(notion.detail, 'https://mcp.notion.com');
 });
 
+test('scanPlan reads plan from credentials and limits from the usage API', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(
+    path.join(dir, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'tok-x', subscriptionType: 'max', rateLimitTier: 'max_20x' } })
+  );
+  const apiResponse = {
+    limits: [
+      { kind: 'session', percent: 34, severity: 'normal', resets_at: '2026-07-13T12:29:59Z', is_active: true, scope: null },
+      { kind: 'weekly_all', percent: 4, severity: 'normal', resets_at: '2026-07-20T07:59:59Z', is_active: false, scope: null },
+      { kind: 'weekly_scoped', percent: 6, severity: 'warning', resets_at: '2026-07-20T07:59:59Z', is_active: false, scope: { model: { display_name: 'Fable' } } },
+    ],
+    spend: { used: { amount_minor: 150 }, limit: { amount_minor: 3000 }, percent: 5, currency: 'EUR', enabled: true },
+  };
+  let capturedHeaders = null;
+  const fakeFetch = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => apiResponse };
+  };
+  const out = await scanners.scanPlan(dir, fakeFetch);
+  assert.strictEqual(out.plan, 'max');
+  assert.strictEqual(out.tier, 'max_20x');
+  assert.strictEqual(out.limits.length, 3);
+  assert.strictEqual(out.limits[0].kind, 'session');
+  assert.strictEqual(out.limits[0].percent, 34);
+  assert.strictEqual(out.limits[0].isActive, true);
+  assert.strictEqual(out.limits[2].scope, 'Fable');
+  assert.strictEqual(out.limits[2].severity, 'warning');
+  assert.strictEqual(out.spend.usedMinor, 150);
+  assert.strictEqual(out.spend.limitMinor, 3000);
+  assert.ok(capturedHeaders.Authorization.includes('tok-x'));
+  // het token mag nooit in de output zitten
+  assert.ok(!JSON.stringify(out).includes('tok-x'));
+});
+
+test('scanPlan throws a clear error without credentials or on API failure', async () => {
+  const dir = makeClaudeDir();
+  await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: true })), /credentials/);
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
+  await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
+});
+
 test('scanHistory returns newest entries first, limited', () => {
   const dir = makeClaudeDir();
   const lines = [];

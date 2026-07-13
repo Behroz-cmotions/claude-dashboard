@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agentic OS</title>
+<title>Claude Dashboard</title>
 <style>
   :root {
     --bg: #0C0F16; --surface: #141926; --inset: #10151F; --line: #232B3D;
@@ -113,6 +113,19 @@
 
   .duo { display: flex; flex-direction: column; gap: 14px; }
 
+  /* ── Plan & limieten ───────────────────────────────────── */
+  .planhead { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .planbadge { font: 600 12px/1.6 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--bg); background: var(--data); padding: 2px 10px; border-radius: 4px; }
+  .meters { display: flex; flex-direction: column; gap: 13px; }
+  .meter .mhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; margin-bottom: 4px; }
+  .meter .mval { font: 600 12px var(--mono); font-variant-numeric: tabular-nums; }
+  .mtrack { height: 8px; border-radius: 4px; background: var(--inset); border: 1px solid var(--line); overflow: hidden; }
+  .mfill { height: 100%; background: var(--data); border-radius: 4px; min-width: 2px; }
+  .mfill.warn { background: var(--signal); }
+  .mfill.crit { background: var(--err); }
+  .mreset { font: 400 10.5px var(--mono); color: var(--ink-3); margin-top: 3px; }
+  .spend { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) {
     .pill .dot, #conn .beacon { animation: none !important; }
@@ -121,12 +134,14 @@
 </head>
 <body>
 <header class="ops">
-  <div class="wordmark">AGENTIC<em>//</em>OS</div>
+  <div class="wordmark">CLAUDE<em>//</em>DASHBOARD</div>
   <div class="kpis">
     <div class="kpi"><span class="v" id="k-sessions">–</span><span class="l">sessies actief</span></div>
     <div class="kpi"><span class="v" id="k-busy">–</span><span class="l">aan het werk</span></div>
     <div class="kpi"><span class="v" id="k-tasks">–</span><span class="l">bg-tasks</span></div>
     <div class="kpi"><span class="v" id="k-tokens">–</span><span class="l" id="k-tokens-l">tokens</span></div>
+    <div class="kpi"><span class="v" id="k-session-limit">–</span><span class="l">sessie-limiet</span></div>
+    <div class="kpi"><span class="v" id="k-week-limit">–</span><span class="l">weeklimiet</span></div>
   </div>
   <div id="conn"><span class="beacon"></span><span id="conn-t">verbinden…</span></div>
 </header>
@@ -135,6 +150,7 @@
   <section class="zone">
     <div class="zone-label">Nu</div>
     <div class="grid g-now">
+      <div class="panel" id="p-plan"><h2>Plan &amp; limieten <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-sessions"><h2>Sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-activity"><h2>Live activiteit <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-running-agents"><h2>Running agents <span class="count"></span></h2><div class="body"></div></div>
@@ -210,6 +226,38 @@ function panel(id, section, render) {
 }
 
 /* ── renderers ─────────────────────────────────────────── */
+function fmtReset(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return 'reset vandaag ' + time;
+  return 'reset ' + d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + time;
+}
+function limitLabel(l) {
+  if (l.kind === 'session') return 'Sessie (5 uur)';
+  if (l.kind === 'weekly_all') return 'Week · alle modellen';
+  if (l.scope) return 'Week · ' + l.scope;
+  return l.kind;
+}
+function renderPlan(p) {
+  const planName = { max: 'Max', pro: 'Pro', free: 'Free' }[p.plan] || p.plan;
+  let html = '<div class="planhead"><span class="planbadge">' + esc(planName) + '</span>' +
+    (p.tier ? '<span class="dim mono" style="font-size:11px">' + esc(p.tier) + '</span>' : '') + '</div>';
+  html += '<div class="meters">' + (p.limits || []).map((l) => {
+    const sev = l.severity === 'warning' ? ' warn' : (l.severity && l.severity !== 'normal') ? ' crit' : '';
+    return '<div class="meter"><div class="mhead"><span>' + esc(limitLabel(l)) +
+      (l.isActive ? ' <span class="tag">actief</span>' : '') + '</span>' +
+      '<span class="mval">' + esc(l.percent) + '%</span></div>' +
+      '<div class="mtrack"><div class="mfill' + sev + '" style="width:' + Math.min(100, l.percent || 0) + '%"></div></div>' +
+      '<div class="mreset">' + fmtReset(l.resetsAt) + '</div></div>';
+  }).join('') + '</div>';
+  if (p.spend) {
+    const cur = (m) => (m / 100).toLocaleString('nl-NL', { style: 'currency', currency: p.spend.currency || 'EUR' });
+    html += '<div class="spend">Extra usage <b class="mono" style="color:var(--ink)">' + cur(p.spend.usedMinor) +
+      '</b> van ' + cur(p.spend.limitMinor) + '</div>';
+  }
+  return html;
+}
 function renderSessions(data) {
   return '<table><tr><th>Naam</th><th>Map</th><th>Status</th><th class="num">Actief</th></tr>' +
     data.map((s) =>
@@ -398,6 +446,14 @@ async function refresh() {
       document.getElementById('k-tokens').textContent = '–';
     }
 
+    const plan = (state.plan && state.plan.data) || null;
+    const findLimit = (kind) => plan && (plan.limits || []).find((l) => l.kind === kind);
+    const sess = findLimit('session');
+    const week = findLimit('weekly_all');
+    document.getElementById('k-session-limit').textContent = sess ? sess.percent + '%' : '–';
+    document.getElementById('k-week-limit').textContent = week ? week.percent + '%' : '–';
+
+    panel('#p-plan', state.plan, renderPlan);
     panel('#p-sessions', state.sessions, renderSessions);
     panel('#p-activity', state.activity, renderActivity);
     panel('#p-running-agents', state.runningAgents, renderRunningAgents);
