@@ -59,5 +59,27 @@ Handmatige verificatie: dashboard openen, elk paneel vergelijken met de werkelij
 ## Bewust buiten scope
 
 - Acties uitvoeren (sessies stoppen, terminals openen) — later toe te voegen.
-- `usage.db`-statistieken (SQLite vergt een dependency).
 - Build-stap, frameworks, externe packages.
+
+---
+
+# V2 — Uitbreiding (goedgekeurd 2026-07-13)
+
+Gebaseerd op onderzoek naar vergelijkbare tools (ccusage, agents-observe, multi-agent-observability) en de beschikbare lokale data.
+
+## Nieuwe panelen
+
+1. **Usage & kosten** — `scanUsage(claudeDir)` leest `usage.db` read-only via het ingebouwde `node:sqlite` (Node ≥ 22.5, blijft zero-dep). Levert: tokens per dag (laatste 14 dagen), verdeling per model, top-10 tools (30 dagen), en totalen van vandaag (tokens, turns). Geen euro-kosten: modelprijzen hardcoden veroudert. Als `node:sqlite` ontbreekt toont het paneel een nette foutmelding.
+2. **Live activiteit** — `scanActivity(claudeDir, sessions, sessionFileIndex)`: per actieve sessie de staart van het bijbehorende project-transcript (`readTailLines`): laatst gebruikte tool en laatste assistent-tekstsnippet.
+3. **Skills & plugins** — `scanSkills(claudeDir)`: mappen in `~/.claude/skills` met naam/beschrijving uit `SKILL.md`-frontmatter, plus enabled plugins uit `settings.json` (`enabledPlugins`).
+4. **MCP-servers** — `scanMcpServers(homeDir)`: parse `~/.claude.json`; globale `mcpServers` + per project. Naam, type/commando (gemaskeerd via `maskSecrets`), scope.
+
+## Look & feel-herontwerp
+
+- KPI-rij bovenaan: actieve sessies, running agents, background tasks, tokens vandaag.
+- Sticky header met live-indicator.
+- Status-pills (met pulse-animatie voor busy) i.p.v. kale tekst.
+- Hiërarchie: operationele panelen (sessies, live activiteit, usage) bovenaan; naslag (agents, hooks, skills, MCP, loops) compacter daaronder.
+- Tokens-per-dag als toegankelijk SVG-staafdiagram (assen, hover-tooltip, geen chartjunk).
+
+Alles blijft read-only, 127.0.0.1, foutisolatie per paneel.
