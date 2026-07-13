@@ -1,1 +1,202 @@
-<h1>placeholder</h1>
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic OS</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #131722; --panel-border: #1f2533;
+    --text: #d7dce5; --muted: #7d8698; --accent: #7aa2f7;
+    --ok: #9ece6a; --warn: #e0af68; --err: #f7768e; --idle: #565f89;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    padding: 20px; min-height: 100vh;
+  }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
+  header h1 span { color: var(--accent); }
+  #conn { font-size: 12px; color: var(--muted); }
+  #conn.lost { color: var(--err); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 14px 16px; overflow: hidden;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between;
+  }
+  .panel h2 .count { color: var(--accent); }
+  .panel.wide { grid-column: 1 / -1; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 8px 3px 0; }
+  td { padding: 3px 8px 3px 0; border-top: 1px solid var(--panel-border); vertical-align: top; }
+  td.mono, .mono { font-family: Consolas, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.running { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .dot.idle { background: var(--idle); }
+  .dot.other { background: var(--warn); }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; background: #1e2436; color: var(--accent);
+  }
+  .empty, .error { color: var(--muted); font-style: italic; padding: 6px 0; }
+  .error { color: var(--err); }
+  .ellipsis { max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 13px; padding: 4px 0; list-style: none; }
+  details summary::before { content: "▸ "; }
+  details[open] summary::before { content: "▾ "; }
+  details table { margin: 4px 0 8px 14px; width: calc(100% - 14px); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agentic <span>OS</span></h1>
+  <div id="conn">verbinden…</div>
+</header>
+<div class="grid">
+  <div class="panel" id="p-sessions"><h2>Actieve sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel" id="p-running-agents"><h2>Running agents <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel" id="p-tasks"><h2>Background tasks <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel" id="p-agents"><h2>Agents <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel" id="p-loops"><h2>Loops &amp; scheduled <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel wide" id="p-projects"><h2>Projecten &amp; sessies <span class="count"></span></h2><div class="body"></div></div>
+  <div class="panel wide" id="p-history"><h2>Recente prompts <span class="count"></span></h2><div class="body"></div></div>
+</div>
+<script>
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function ago(ts) {
+  if (!ts) return '';
+  const d = Date.now() - ts;
+  if (d < 60e3) return Math.round(d / 1e3) + 's geleden';
+  if (d < 3600e3) return Math.round(d / 60e3) + 'm geleden';
+  if (d < 86400e3) return Math.round(d / 3600e3) + 'u geleden';
+  return Math.round(d / 86400e3) + 'd geleden';
+}
+
+function panel(id, section, render) {
+  const el = document.querySelector(id);
+  const body = el.querySelector('.body');
+  const count = el.querySelector('.count');
+  if (!section) { body.innerHTML = '<div class="empty">geen data</div>'; return; }
+  if (section.error) { body.innerHTML = '<div class="error">fout: ' + esc(section.error) + '</div>'; count.textContent = ''; return; }
+  const data = section.data || [];
+  count.textContent = data.length || '';
+  body.innerHTML = data.length ? render(data) : '<div class="empty">geen items</div>';
+}
+
+function dotFor(status) {
+  if (status === 'running' || status === 'busy') return '<span class="dot running"></span>';
+  if (status === 'idle') return '<span class="dot idle"></span>';
+  return '<span class="dot other"></span>';
+}
+
+function renderSessions(data) {
+  return '<table><tr><th></th><th>Naam</th><th>Map</th><th>Status</th><th>Actief</th></tr>' +
+    data.map((s) =>
+      '<tr><td>' + dotFor(s.status) + '</td><td>' + esc(s.name) +
+      ' <span class="muted mono">pid ' + esc(s.pid) + '</span></td>' +
+      '<td class="mono ellipsis" title="' + esc(s.cwd) + '">' + esc(s.cwd) + '</td>' +
+      '<td>' + esc(s.status) + '</td><td class="muted">' + ago(s.updatedAt) + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderRunningAgents(data) {
+  return '<table><tr><th>Naam</th><th>Soort</th><th>Actief</th></tr>' +
+    data.map((s) =>
+      '<tr><td>' + dotFor(s.status) + esc(s.name) + '</td><td><span class="badge">' + esc(s.kind) + '</span></td>' +
+      '<td class="muted">' + ago(s.updatedAt) + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderTasks(data) {
+  return '<table><tr><th>Taak</th><th>Sessie</th><th>Activiteit</th></tr>' +
+    data.map((t) =>
+      '<tr><td class="mono">' + esc(t.id) + '</td>' +
+      '<td class="mono muted">' + esc(t.linkedSession || '—') + '</td>' +
+      '<td class="muted">' + ago(t.lastActivity) + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderAgents(data) {
+  return '<table><tr><th>Naam</th><th>Scope</th></tr>' +
+    data.map((a) =>
+      '<tr><td><b>' + esc(a.name) + '</b><div class="muted ellipsis" title="' + esc(a.description) + '">' +
+      esc(a.description) + '</div></td>' +
+      '<td><span class="badge">' + esc(a.scope === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderHooks(data) {
+  return '<table><tr><th>Event</th><th>Commando</th><th>Bron</th></tr>' +
+    data.map((h) =>
+      '<tr><td><span class="badge">' + esc(h.event) + (h.matcher ? ' · ' + esc(h.matcher) : '') + '</span></td>' +
+      '<td class="mono ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td>' +
+      '<td><span class="muted">' + esc(h.source === 'globaal' ? 'globaal' : 'project') + '</span></td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderLoops(data) {
+  return '<table><tr><th>Naam</th><th>Pad</th></tr>' +
+    data.map((l) =>
+      '<tr><td>' + esc(l.name) + '</td><td class="mono muted">' + esc(l.path) + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+function renderProjects(data) {
+  return data.map((p, i) =>
+    '<details' + (i === 0 ? ' open' : '') + '><summary>' + esc(p.path) +
+    ' <span class="muted">· ' + p.sessionCount + ' sessies · ' + ago(p.lastActivity) + '</span></summary>' +
+    '<table><tr><th>Sessie</th><th>Titel</th><th>Laatste activiteit</th><th>Grootte</th></tr>' +
+    p.sessions.map((s) =>
+      '<tr><td class="mono muted">' + esc(s.sessionId.slice(0, 8)) + '</td>' +
+      '<td class="ellipsis" title="' + esc(s.title) + '">' + esc(s.title || '—') + '</td>' +
+      '<td class="muted">' + ago(s.mtime) + '</td>' +
+      '<td class="muted">' + Math.round(s.size / 1024) + ' kB</td></tr>'
+    ).join('') + '</table></details>'
+  ).join('');
+}
+
+function renderHistory(data) {
+  return '<table><tr><th>Wanneer</th><th>Project</th><th>Prompt</th></tr>' +
+    data.map((h) =>
+      '<tr><td class="muted" style="white-space:nowrap">' + ago(h.timestamp) + '</td>' +
+      '<td class="mono muted ellipsis" title="' + esc(h.project) + '">' + esc((h.project || '').split('\\').pop()) + '</td>' +
+      '<td class="ellipsis" style="max-width:600px" title="' + esc(h.display) + '">' + esc(h.display) + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+async function refresh() {
+  const conn = document.getElementById('conn');
+  try {
+    const res = await fetch('/api/state');
+    const state = await res.json();
+    conn.textContent = 'live · ' + new Date(state.generatedAt).toLocaleTimeString('nl-NL');
+    conn.classList.remove('lost');
+    panel('#p-sessions', state.sessions, renderSessions);
+    panel('#p-running-agents', state.runningAgents, renderRunningAgents);
+    panel('#p-tasks', state.tasks, renderTasks);
+    panel('#p-agents', state.agents, renderAgents);
+    panel('#p-hooks', state.hooks, renderHooks);
+    panel('#p-loops', state.loops, renderLoops);
+    panel('#p-projects', state.projects, renderProjects);
+    panel('#p-history', state.history, renderHistory);
+  } catch {
+    conn.textContent = 'verbinding kwijt — opnieuw proberen…';
+    conn.classList.add('lost');
+  }
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
