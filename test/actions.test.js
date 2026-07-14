@@ -36,7 +36,7 @@ test('saveFile writes inside the root and refuses outside it', () => {
   const target = path.join(root, 'a.md');
   saveFile(target, '# hallo', [root]);
   assert.strictEqual(fs.readFileSync(target, 'utf8'), '# hallo');
-  assert.throws(() => saveFile(path.join(os.tmpdir(), 'nope.md'), 'x', [root]), /buiten/i);
+  assert.throws(() => saveFile(path.join(os.tmpdir(), 'nope.md'), 'x', [root]), /outside/i);
 });
 
 test('deletePath removes a file and a directory, but refuses outside the root', () => {
@@ -54,7 +54,7 @@ test('deletePath removes a file and a directory, but refuses outside the root', 
 
   const outside = path.join(os.tmpdir(), 'aos-niet-verwijderen.txt');
   fs.writeFileSync(outside, 'x');
-  assert.throws(() => deletePath(outside, [root]), /buiten/i);
+  assert.throws(() => deletePath(outside, [root]), /outside/i);
   assert.strictEqual(fs.existsSync(outside), true, 'bestand buiten de root blijft bestaan');
 });
 
@@ -93,7 +93,7 @@ test('removeHook rejects an out-of-range index instead of deleting the wrong hoo
   const settingsPath = path.join(root, 'settings.json');
   const original = { hooks: { Stop: [{ hooks: [{ command: 'a' }] }] } };
   fs.writeFileSync(settingsPath, JSON.stringify(original));
-  assert.throws(() => removeHook(settingsPath, 'Stop', 0, 5, [root]), /niet gevonden/i);
+  assert.throws(() => removeHook(settingsPath, 'Stop', 0, 5, [root]), /not found/i);
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(settingsPath, 'utf8')), original, 'bestand ongewijzigd');
 });
 
@@ -102,9 +102,9 @@ test('createFile creates parent dirs, refuses overwrite and paths outside the ro
   const target = path.join(root, 'skills', 'nieuw', 'SKILL.md');
   createFile(target, '# skill', [root]);
   assert.strictEqual(fs.readFileSync(target, 'utf8'), '# skill');
-  assert.throws(() => createFile(target, 'overschrijf', [root]), /bestaat al/i);
+  assert.throws(() => createFile(target, 'overschrijf', [root]), /already exists/i);
   assert.strictEqual(fs.readFileSync(target, 'utf8'), '# skill', 'inhoud onaangetast');
-  assert.throws(() => createFile(path.join(os.tmpdir(), 'buiten.md'), 'x', [root]), /buiten/i);
+  assert.throws(() => createFile(path.join(os.tmpdir(), 'buiten.md'), 'x', [root]), /outside/i);
 });
 
 test('addHook appends to existing settings and creates the file when missing', () => {
@@ -132,5 +132,5 @@ test('removeHook refuses a settings file outside the root', () => {
   const root = tmpRoot();
   const outside = path.join(os.tmpdir(), 'aos-buiten-settings.json');
   fs.writeFileSync(outside, JSON.stringify({ hooks: { Stop: [{ hooks: [{ command: 'x' }] }] } }));
-  assert.throws(() => removeHook(outside, 'Stop', 0, 0, [root]), /buiten/i);
+  assert.throws(() => removeHook(outside, 'Stop', 0, 0, [root]), /outside/i);
 });

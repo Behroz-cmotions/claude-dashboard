@@ -106,7 +106,7 @@ test('scanAgents merges global and project agents', () => {
   fs.writeFileSync(path.join(proj, '.claude', 'agents', 'reviewer.md'), '---\nname: reviewer\n---\n');
   const out = scanners.scanAgents(dir, [proj]);
   assert.deepStrictEqual(out.map((a) => a.name).sort(), ['docs-agent', 'reviewer']);
-  assert.strictEqual(out.find((a) => a.name === 'docs-agent').scope, 'globaal');
+  assert.strictEqual(out.find((a) => a.name === 'docs-agent').scope, 'global');
   assert.strictEqual(out.find((a) => a.name === 'reviewer').scope, proj);
 });
 
@@ -126,7 +126,7 @@ test('scanHooks flattens hooks from settings and masks secrets', () => {
   const stop = out.find((h) => h.event === 'Stop');
   assert.ok(stop.command.includes('••••'));
   assert.strictEqual(out.find((h) => h.event === 'PreToolUse').matcher, 'Bash');
-  assert.strictEqual(stop.source, 'globaal');
+  assert.strictEqual(stop.source, 'global');
 });
 
 test('scanLoops finds cron/schedule-like entries, else empty', () => {
@@ -221,7 +221,7 @@ test('scanMcpServers reads global and project servers from .claude.json', () => 
   const out = scanners.scanMcpServers(home);
   assert.strictEqual(out.length, 2);
   const glob = out.find((s) => s.name === 'globalsrv');
-  assert.strictEqual(glob.scope, 'globaal');
+  assert.strictEqual(glob.scope, 'global');
   assert.ok(glob.detail.includes('••••'));
   const notion = out.find((s) => s.name === 'notion');
   assert.strictEqual(notion.scope, 'C:\\proj-a');

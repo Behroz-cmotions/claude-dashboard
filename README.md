@@ -1,16 +1,16 @@
 # Claude Dashboard
 
-Een lokaal dashboard voor [Claude Code](https://claude.com/claude-code): actieve sessies, agents, skills, hooks, tokengebruik per project en sessie, en je abonnement met rate-limits — live in de browser.
+A local dashboard for [Claude Code](https://claude.com/claude-code): active sessions, agents, skills, hooks, token usage per project and session, and your plan with rate limits — live in the browser.
 
-Het dashboard leest de `~/.claude`-map van de gebruiker die het start. Iedereen ziet dus zijn **eigen** sessies en usage; er wordt niets gedeeld of naar buiten gestuurd.
+The dashboard reads the `~/.claude` folder of the user who starts it. Everyone sees their **own** sessions and usage; nothing is shared or sent anywhere.
 
-## Wat heb je nodig
+## Requirements
 
-- **Node.js 18 of nieuwer** — controleer met `node --version`. Er zijn geen dependencies, dus `npm install` is niet nodig.
-- **Claude Code** geïnstalleerd en minstens één keer gebruikt (anders is er geen `~/.claude`-map met data).
-- Getest op Windows 11; de scanners gebruiken platformonafhankelijke paden.
+- **Node.js 18 or newer** — check with `node --version`. There are no dependencies, so `npm install` is not needed.
+- **Claude Code** installed and used at least once (otherwise there is no `~/.claude` folder with data).
+- Tested on Windows 11; the scanners use platform-independent paths.
 
-## Ophalen en starten
+## Get it and run it
 
 ```bash
 git clone https://github.com/Behroz-cmotions/claude-dashboard.git
@@ -18,15 +18,15 @@ cd claude-dashboard
 node server.js
 ```
 
-Open daarna **http://127.0.0.1:4545** in je browser.
+Then open **http://127.0.0.1:4545** in your browser.
 
-Andere poort nodig? Start met `PORT=8080 node server.js` (PowerShell: `$env:PORT='8080'; node server.js`).
+Need a different port? Start with `PORT=8080 node server.js` (PowerShell: `$env:PORT='8080'; node server.js`).
 
-## Veiligheid
+## Security
 
-- De server bindt **alleen op 127.0.0.1** en is dus niet bereikbaar vanaf het netwerk. Zo houden: het dashboard praat server-side met je Claude OAuth-token en kan bestanden bewerken en sessies stoppen.
-- Muterende acties vereisen een per-start gegenereerd token in een custom header, zodat websites die je bezoekt geen acties kunnen uitvoeren (CORS-preflight wordt niet beantwoord).
-- Je OAuth-token komt nooit in de API-responses of in cachebestanden terecht.
+- The server binds to **127.0.0.1 only**, so it is not reachable from the network. Keep it that way: the dashboard talks to your Claude OAuth token server-side and can edit files and stop sessions.
+- Mutating actions require a per-start generated token in a custom header, so websites you visit cannot perform actions (the CORS preflight is never answered).
+- Your OAuth token never ends up in API responses or cache files.
 
 ## Tests
 

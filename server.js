@@ -90,13 +90,13 @@ function readBody(req) {
     let raw = '';
     req.on('data', (chunk) => {
       raw += chunk;
-      if (raw.length > 5e6) reject(new Error('body te groot'));
+      if (raw.length > 5e6) reject(new Error('body too large'));
     });
     req.on('end', () => {
       try {
         resolve(raw ? JSON.parse(raw) : {});
       } catch {
-        reject(new Error('ongeldige JSON'));
+        reject(new Error('invalid JSON'));
       }
     });
     req.on('error', reject);
@@ -107,7 +107,7 @@ function readBody(req) {
 // zo kan het dashboard nooit een willekeurig proces afschieten.
 function stopSession(pid) {
   const known = scanners.scanSessions(CLAUDE_DIR).some((s) => s.pid === pid);
-  if (!known) throw new Error('geen bekende sessie met pid ' + pid);
+  if (!known) throw new Error('no known session with pid ' + pid);
   process.kill(pid);
   return { stopped: pid };
 }
@@ -126,19 +126,19 @@ function revealFile(target, roots) {
 }
 
 function agentTemplate(name) {
-  return ['---', 'name: ' + name, 'description: Beschrijf wanneer deze agent gebruikt moet worden.',
-    'tools: Read, Grep, Glob', '---', '', 'Je bent ' + name + '. Beschrijf hier de instructies voor deze agent.', ''].join('\n');
+  return ['---', 'name: ' + name, 'description: Describe when this agent should be used.',
+    'tools: Read, Grep, Glob', '---', '', 'You are ' + name + '. Describe the instructions for this agent here.', ''].join('\n');
 }
 function skillTemplate(name) {
-  return ['---', 'name: ' + name, 'description: Beschrijf wanneer deze skill gebruikt moet worden.',
-    '---', '', '# ' + name, '', 'Beschrijf hier de stappen van deze skill.', ''].join('\n');
+  return ['---', 'name: ' + name, 'description: Describe when this skill should be used.',
+    '---', '', '# ' + name, '', 'Describe the steps of this skill here.', ''].join('\n');
 }
 
 // Maakt een nieuwe agent, skill of hook aan; het pad en de template worden
 // server-side bepaald zodat de browser geen paden hoeft te kennen.
 function createItem(body, roots) {
   const what = String(body.what || '');
-  const scope = body.scope && body.scope !== 'globaal' ? String(body.scope) : null;
+  const scope = body.scope && body.scope !== 'global' ? String(body.scope) : null;
   const base = scope ? path.join(scope, '.claude') : CLAUDE_DIR;
   if (what === 'hook') {
     const saved = actions.addHook(path.join(base, 'settings.json'), String(body.event || ''), String(body.matcher || ''), String(body.command || ''), roots);
@@ -146,7 +146,7 @@ function createItem(body, roots) {
   }
   const name = String(body.name || '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,60}$/.test(name)) {
-    throw new Error('naam: kleine letters, cijfers en strepen (bijv. mijn-agent)');
+    throw new Error('name: lowercase letters, digits and dashes (e.g. my-agent)');
   }
   if (what === 'agent') {
     return { created: actions.createFile(path.join(base, 'agents', name + '.md'), agentTemplate(name), roots) };
@@ -154,7 +154,7 @@ function createItem(body, roots) {
   if (what === 'skill') {
     return { created: actions.createFile(path.join(base, 'skills', name, 'SKILL.md'), skillTemplate(name), roots) };
   }
-  throw new Error('onbekend type: ' + what);
+  throw new Error('unknown type: ' + what);
 }
 
 const ACTIONS = {
@@ -173,16 +173,16 @@ const server = http.createServer(async (req, res) => {
 
   // muterende routes: POST + geldig actietoken
   if (ACTIONS[route]) {
-    if (req.method !== 'POST') return send(res, 405, { error: 'alleen POST' });
+    if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
     if (req.headers['x-dashboard-token'] !== ACTION_TOKEN) {
-      return send(res, 403, { error: 'ongeldig of ontbrekend actietoken' });
+      return send(res, 403, { error: 'invalid or missing action token' });
     }
     try {
       const body = await readBody(req);
       return send(res, 200, { ok: true, ...ACTIONS[route](body, allowedRoots()) });
     } catch (err) {
       const msg = String((err && err.message) || err);
-      return send(res, /buiten de toegestane/.test(msg) ? 403 : 400, { error: msg });
+      return send(res, /outside the allowed/.test(msg) ? 403 : 400, { error: msg });
     }
   }
 
@@ -203,7 +203,7 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (err) {
       const msg = String((err && err.message) || err);
-      return send(res, /buiten de toegestane/.test(msg) ? 403 : 404, { error: msg });
+      return send(res, /outside the allowed/.test(msg) ? 403 : 404, { error: msg });
     }
   }
 
@@ -215,7 +215,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(html);
     } catch {
       res.writeHead(500);
-      return res.end('index.html ontbreekt');
+      return res.end('index.html missing');
     }
   }
 
@@ -224,5 +224,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Claude Dashboard draait op http://localhost:${PORT}`);
+  console.log(`Claude Dashboard running at http://localhost:${PORT}`);
 });
