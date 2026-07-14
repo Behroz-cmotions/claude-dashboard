@@ -151,6 +151,9 @@
   .mfill.warn { background: var(--signal); }
   .mfill.crit { background: var(--err); }
   .mreset { font: 400 10.5px var(--mono); color: var(--ink-3); margin-top: 3px; }
+  .mpace { font: 400 10.5px var(--mono); color: var(--ink-3); margin-top: 2px; }
+  .mpace.warn { color: var(--signal); }
+  .mpace.crit { color: var(--err); }
   .spend { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
 
   /* ── Acties, modal, waiting ────────────────────────────── */
@@ -582,6 +585,27 @@ function fmtReset(iso) {
   if (d.toDateString() === new Date().toDateString()) return 'resets today ' + time;
   return 'resets ' + d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + time;
 }
+function fmtClock(ms) {
+  return new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+// Pace-projectie onder een meter: haal je de reset, of loop je eerder leeg?
+function paceLine(l) {
+  if (!l.pace) return '';
+  const p = l.pace;
+  const resetMs = l.resetsAt ? Date.parse(l.resetsAt) : NaN;
+  let cls = '';
+  let verdict = '';
+  if (p.makesReset === false) {
+    cls = ' crit';
+    verdict = ' — runs out before the reset';
+  } else if (p.makesReset === true) {
+    const margin = resetMs - p.fullAt;
+    cls = margin < 15 * 60000 ? ' warn' : '';
+    verdict = ' — makes the reset' + (cls ? ' (barely)' : '');
+  }
+  return '<div class="mpace' + cls + '" title="measured over the last 30 minutes">+' +
+    p.perHour + '%/h · full ~' + fmtClock(p.fullAt) + verdict + '</div>';
+}
 function limitLabel(l) {
   if (l.kind === 'session') return 'Session (5 hours)';
   if (l.kind === 'weekly_all') return 'Week · all models';
@@ -589,6 +613,13 @@ function limitLabel(l) {
   return l.kind;
 }
 function renderPlan(p) {
+  if (p.authMethod) {
+    const label = { 'api-key': 'API key', bedrock: 'AWS Bedrock', vertex: 'Google Vertex AI' }[p.authMethod] || p.authMethod;
+    return '<div class="planhead"><span class="planbadge">' + esc(label) + '</span>' +
+      '<span class="dim mono" style="font-size:11px" title="where this was detected">' + esc(p.source || '') + '</span></div>' +
+      '<div class="dim" style="font-size:12px">Pay-per-use billing — there are no subscription limits to show. ' +
+      'Usage and costs are in the provider console.</div>';
+  }
   const planName = { max: 'Max', pro: 'Pro', free: 'Free' }[p.plan] || p.plan;
   let html = '<div class="planhead"><span class="planbadge">' + esc(planName) + '</span>' +
     (p.tier ? '<span class="dim mono" style="font-size:11px">' + esc(p.tier) + '</span>' : '') +
@@ -600,7 +631,7 @@ function renderPlan(p) {
       (l.isActive ? ' <span class="tag">active</span>' : '') + '</span>' +
       '<span class="mval">' + esc(l.percent) + '%</span></div>' +
       '<div class="mtrack"><div class="mfill' + sev + '" style="width:' + Math.min(100, l.percent || 0) + '%"></div></div>' +
-      '<div class="mreset">' + fmtReset(l.resetsAt) + '</div></div>';
+      '<div class="mreset">' + fmtReset(l.resetsAt) + '</div>' + paceLine(l) + '</div>';
   }).join('') + '</div>';
   if (p.spend) {
     const cur = (m) => (m / 100).toLocaleString('en-US', { style: 'currency', currency: p.spend.currency || 'EUR' });
@@ -875,7 +906,14 @@ async function refresh() {
     const findLimit = (kind) => plan && (plan.limits || []).find((l) => l.kind === kind);
     const sess = findLimit('session');
     const week = findLimit('weekly_all');
-    document.getElementById('k-session-limit').textContent = sess ? sess.percent + '%' : '–';
+    const kSess = document.getElementById('k-session-limit');
+    if (sess && sess.pace) {
+      kSess.innerHTML = sess.percent + '% <span class="unit">· full ~' + fmtClock(sess.pace.fullAt) + '</span>';
+      kSess.style.color = sess.pace.makesReset === false ? 'var(--err)' : '';
+    } else {
+      kSess.textContent = sess ? sess.percent + '%' : '–';
+      kSess.style.color = '';
+    }
     document.getElementById('k-week-limit').textContent = week ? week.percent + '%' : '–';
 
     const tu = (state.tokenUsage && state.tokenUsage.data) || null;

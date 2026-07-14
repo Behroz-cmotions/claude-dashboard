@@ -265,9 +265,213 @@ test('scanPlan reads plan from credentials and limits from the usage API', async
 
 test('scanPlan throws a clear error without credentials or on API failure', async () => {
   const dir = makeClaudeDir();
-  await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: true })), /credentials/);
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    /credentials/
+  );
   fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
   await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
+});
+
+test('scanPlan noemt de remote-setup-hint als .credentials.json bestaat maar leeg is', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), '');
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    (err) => /credentials/.test(err.message) && /empty/.test(err.message) && /SSH tunnel/.test(err.message)
+  );
+});
+
+test('scanPlan noemt de remote-setup-hint ook als .credentials.json ontbreekt', async () => {
+  const dir = makeClaudeDir();
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    (err) => /credentials/.test(err.message) && /remote/.test(err.message)
+  );
+});
+
+test('scanPlan herkent een API-key via settings.json zonder de usage-API aan te roepen', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKeyHelper: 'C:\\keys\\helper.ps1' }));
+  let fetchCalled = false;
+  const out = await scanners.scanPlan(dir, async () => { fetchCalled = true; return { ok: true }; },
+    { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /apiKeyHelper/);
+  assert.deepStrictEqual(out.limits, []);
+  assert.strictEqual(out.spend, null);
+  assert.strictEqual(fetchCalled, false, 'geen usage-API-call bij een API-key');
+});
+
+test('scanPlan herkent Bedrock en Vertex via settings.json env', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CLAUDE_CODE_USE_BEDROCK: '1' } }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'bedrock');
+
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CLAUDE_CODE_USE_VERTEX: '1' } }));
+  const out2 = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out2.authMethod, 'vertex');
+});
+
+test('scanPlan herkent een goedgekeurde API-key in .claude.json', async () => {
+  const dir = makeClaudeDir();
+  const home = makeClaudeDir();
+  fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ customApiKeyResponses: { approved: ['sk-tail'] } }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: home });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /\.claude\.json/);
+});
+
+test('scanPlan herkent ANTHROPIC_API_KEY in de proces-omgeving', async () => {
+  const dir = makeClaudeDir();
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }),
+    { platform: 'win32', env: { ANTHROPIC_API_KEY: 'sk-x' }, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /environment/);
+});
+
+test('scanPlan geeft OAuth voorrang boven API-key-sporen', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'pro' } }));
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKeyHelper: 'x' }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true, status: 200, json: async () => ({ limits: [] }) }),
+    { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.plan, 'pro');
+  assert.strictEqual(out.authMethod, undefined);
+});
+
+test('scanPlan valt op macOS terug op de Keychain als .credentials.json ontbreekt', async () => {
+  const dir = makeClaudeDir();
+  let capturedCmd = null;
+  const fakeExec = (cmd, args) => {
+    capturedCmd = [cmd, ...args];
+    return JSON.stringify({ claudeAiOauth: { accessToken: 'tok-mac', subscriptionType: 'pro' } }) + '\n';
+  };
+  let capturedHeaders = null;
+  const fakeFetch = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => ({ limits: [] }) };
+  };
+  const out = await scanners.scanPlan(dir, fakeFetch, { platform: 'darwin', execFileSync: fakeExec });
+  assert.strictEqual(out.plan, 'pro');
+  assert.ok(capturedHeaders.Authorization.includes('tok-mac'));
+  assert.strictEqual(capturedCmd[0], 'security');
+  assert.ok(capturedCmd.includes('Claude Code-credentials'));
+});
+
+test('scanPlan op macOS geeft de duidelijke fout als ook de Keychain niets oplevert', async () => {
+  const dir = makeClaudeDir();
+  const failingExec = () => {
+    throw new Error('security: SecKeychainSearchCopyNext: The specified item could not be found.');
+  };
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'darwin', execFileSync: failingExec }),
+    /credentials/
+  );
+});
+
+test('scanPlan gebruikt .credentials.json ook op macOS als het bestand er wél is', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'tok-file', subscriptionType: 'max' } }));
+  let execCalled = false;
+  const fakeExec = () => {
+    execCalled = true;
+    return '{}';
+  };
+  const fakeFetch = async () => ({ ok: true, status: 200, json: async () => ({ limits: [] }) });
+  const out = await scanners.scanPlan(dir, fakeFetch, { platform: 'darwin', execFileSync: fakeExec });
+  assert.strictEqual(out.plan, 'max');
+  assert.strictEqual(execCalled, false, 'geen Keychain-call als het bestand volstaat');
+});
+
+test('computePace rekent %/uur, 100%-tijdstip en of de reset gehaald wordt', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 25 * 60000, percent: 40 },
+    { at: now - 12 * 60000, percent: 53 },
+    { at: now, percent: 66 },
+  ];
+  const resetsAt = new Date(now + 60 * 60000).toISOString();
+  const pace = scanners.computePace(history, now, resetsAt);
+  assert.ok(pace.perHour > 61 && pace.perHour < 64, 'ongeveer 62%/h, was ' + pace.perHour);
+  // 34% te gaan bij ~62.4%/h ≈ 32,7 min
+  assert.ok(pace.fullAt > now + 30 * 60000 && pace.fullAt < now + 36 * 60000);
+  assert.strictEqual(pace.makesReset, false, '100% valt vóór de reset');
+});
+
+test('computePace geeft true als de reset vóór het 100%-tijdstip valt en null zonder resetsAt', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 20 * 60000, percent: 90 },
+    { at: now, percent: 91 },
+  ];
+  const soonReset = new Date(now + 10 * 60000).toISOString();
+  assert.strictEqual(scanners.computePace(history, now, soonReset).makesReset, true);
+  assert.strictEqual(scanners.computePace(history, now, null).makesReset, null);
+});
+
+test('computePace geeft null bij te weinig data, te korte spreiding of vlak verbruik', () => {
+  const now = Date.now();
+  assert.strictEqual(scanners.computePace([{ at: now, percent: 50 }], now, null), null);
+  assert.strictEqual(scanners.computePace([
+    { at: now - 5 * 60000, percent: 50 },
+    { at: now, percent: 55 },
+  ], now, null), null, 'minder dan 10 minuten spreiding');
+  assert.strictEqual(scanners.computePace([
+    { at: now - 20 * 60000, percent: 50 },
+    { at: now, percent: 50 },
+  ], now, null), null, 'vlak verbruik');
+});
+
+test('createPlanSection bouwt history op en decoreert limieten met pace', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'max' } }));
+  const now = Date.now();
+  const resetsAt = new Date(now + 60 * 60000).toISOString();
+  // geseede history van een eerdere serverstart, snapshot ouder dan de verscache
+  fs.writeFileSync(path.join(dir, 'dashboard-plan-cache.json'), JSON.stringify({
+    at: now - 5 * 60000,
+    data: null,
+    history: { 'session:': [
+      { at: now - 25 * 60000, percent: 40 },
+      { at: now - 12 * 60000, percent: 53 },
+    ] },
+  }));
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 66, severity: 'normal', resets_at: resetsAt, is_active: true, scope: null }],
+  };
+  const getPlan = scanners.createPlanSection(dir, async () => ({ ok: true, status: 200, json: async () => apiResponse }));
+  const out = await getPlan();
+  const limit = out.data.limits[0];
+  assert.ok(limit.pace, 'limiet heeft een pace-projectie');
+  assert.ok(limit.pace.perHour > 55, 'stijgende pace gemeten');
+  assert.strictEqual(limit.pace.makesReset, false);
+  // history is bijgewerkt en bewaard in de snapshot
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'dashboard-plan-cache.json'), 'utf8'));
+  assert.strictEqual(snap.history['session:'].length, 3);
+});
+
+test('createPlanSection begint de history opnieuw na een reset (percentage daalt)', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
+  const now = Date.now();
+  fs.writeFileSync(path.join(dir, 'dashboard-plan-cache.json'), JSON.stringify({
+    at: now - 5 * 60000,
+    data: null,
+    history: { 'session:': [
+      { at: now - 30 * 60000, percent: 80 },
+      { at: now - 15 * 60000, percent: 95 },
+    ] },
+  }));
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 3, severity: 'normal', resets_at: null, is_active: true, scope: null }],
+  };
+  const getPlan = scanners.createPlanSection(dir, async () => ({ ok: true, status: 200, json: async () => apiResponse }));
+  const out = await getPlan();
+  assert.strictEqual(out.data.limits[0].pace, null, 'geen projectie direct na een reset');
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'dashboard-plan-cache.json'), 'utf8'));
+  assert.strictEqual(snap.history['session:'].length, 1, 'history begint opnieuw');
 });
 
 test('createPlanSection valt na een herstart bij 429 terug op de bewaarde stand', async () => {
