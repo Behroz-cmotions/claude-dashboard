@@ -424,6 +424,55 @@ test('computePace geeft null bij te weinig data, te korte spreiding of vlak verb
   ], now, null), null, 'vlak verbruik');
 });
 
+test('computePace meet ook de 10-minutenpace en de maximaal houdbare pace', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 25 * 60000, percent: 40 },   // 30-min-venster: ~62%/h
+    { at: now - 12 * 60000, percent: 53 },
+    { at: now - 8 * 60000, percent: 57 },    // 10-min-venster: 57 → 66 in 8 min = 67.5%/h
+    { at: now, percent: 66 },
+  ];
+  const resetsAt = new Date(now + 60 * 60000).toISOString();
+  const pace = scanners.computePace(history, now, resetsAt);
+  assert.ok(pace.perHour10 > 66 && pace.perHour10 < 69, '10-min-pace ~67.5, was ' + pace.perHour10);
+  // 34% te gaan in 1 uur tot reset → 34%/h houdbaar
+  assert.ok(pace.sustainablePerHour > 33.5 && pace.sustainablePerHour < 34.5, 'houdbaar ~34, was ' + pace.sustainablePerHour);
+});
+
+test('computePace: perHour10 en sustainablePerHour zijn null zonder genoeg data of resetsAt', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 25 * 60000, percent: 40 },
+    { at: now - 12 * 60000, percent: 53 },
+    { at: now - 2 * 60000, percent: 65 },   // 10-min-venster: maar 2 min spreiding
+    { at: now, percent: 66 },
+  ];
+  const pace = scanners.computePace(history, now, null);
+  assert.strictEqual(pace.perHour10, null, 'minder dan 5 min spreiding in het 10-min-venster');
+  assert.strictEqual(pace.sustainablePerHour, null, 'geen resetsAt');
+});
+
+test('createPlanSection hangt de gemeten history aan elke limiet', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
+  const now = Date.now();
+  fs.writeFileSync(path.join(dir, 'dashboard-plan-cache.json'), JSON.stringify({
+    at: now - 5 * 60000,
+    data: null,
+    history: { 'session:': [{ at: now - 20 * 60000, percent: 40 }] },
+  }));
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 55, severity: 'normal', resets_at: null, is_active: true, scope: null }],
+  };
+  const getPlan = scanners.createPlanSection(dir, async () => ({ ok: true, status: 200, json: async () => apiResponse }));
+  const out = await getPlan();
+  const limit = out.data.limits[0];
+  assert.ok(Array.isArray(limit.history), 'limiet draagt zijn history');
+  assert.strictEqual(limit.history.length, 2);
+  assert.strictEqual(limit.history[0].percent, 40);
+  assert.strictEqual(limit.history[1].percent, 55);
+});
+
 test('createPlanSection bouwt history op en decoreert limieten met pace', async () => {
   const dir = makeClaudeDir();
   fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'max' } }));

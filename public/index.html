@@ -154,6 +154,19 @@
   .mpace { font: 400 10.5px var(--mono); color: var(--ink-3); margin-top: 2px; }
   .mpace.warn { color: var(--signal); }
   .mpace.crit { color: var(--err); }
+  details.meter > summary { list-style: none; cursor: pointer; }
+  details.meter > summary::-webkit-details-marker { display: none; }
+  details.meter .mhead > span:first-child::before { content: "▸ "; color: var(--ink-3); font-size: 10px; }
+  details.meter[open] .mhead > span:first-child::before { content: "▾ "; }
+  .pacedetail { margin: 9px 0 2px; }
+  .pacedetail svg { width: 100%; height: auto; display: block; }
+  .pacedetail .pgrid { stroke: var(--line); stroke-width: 1; }
+  .pacedetail text { font: 400 9.5px var(--mono); fill: var(--ink-3); }
+  .pacestats { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin-top: 8px; }
+  .pacestats .k { font: 400 9.5px/2 var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); }
+  .pacestats .v { font: 400 11.5px/1.75 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pacestats .v.warn { color: var(--signal); }
+  .pacestats .v.crit { color: var(--err); }
   .spend { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
 
   /* ── Acties, modal, waiting ────────────────────────────── */
@@ -588,23 +601,96 @@ function fmtReset(iso) {
 function fmtClock(ms) {
   return new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
+function fmtDur(ms) {
+  if (!Number.isFinite(ms)) return '–';
+  const m = Math.max(0, Math.round(ms / 60000));
+  return m >= 60 ? Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm' : m + 'm';
+}
+// Oordeel over een pace-projectie: '' (ruim), 'warn' (krap, < 15 min marge) of 'crit' (loopt leeg vóór de reset)
+function paceVerdict(p, resetMs) {
+  if (!p) return '';
+  if (p.makesReset === false) return 'crit';
+  if (p.makesReset === true && Number.isFinite(resetMs) && resetMs - p.fullAt < 15 * 60000) return 'warn';
+  return '';
+}
 // Pace-projectie onder een meter: haal je de reset, of loop je eerder leeg?
 function paceLine(l) {
   if (!l.pace) return '';
   const p = l.pace;
   const resetMs = l.resetsAt ? Date.parse(l.resetsAt) : NaN;
-  let cls = '';
-  let verdict = '';
-  if (p.makesReset === false) {
-    cls = ' crit';
-    verdict = ' — runs out before the reset';
-  } else if (p.makesReset === true) {
-    const margin = resetMs - p.fullAt;
-    cls = margin < 15 * 60000 ? ' warn' : '';
-    verdict = ' — makes the reset' + (cls ? ' (barely)' : '');
-  }
-  return '<div class="mpace' + cls + '" title="measured over the last 30 minutes">+' +
+  const v = paceVerdict(p, resetMs);
+  const verdict = p.makesReset === false ? ' — runs out before the reset'
+    : p.makesReset === true ? ' — makes the reset' + (v === 'warn' ? ' (barely)' : '') : '';
+  return '<div class="mpace' + (v ? ' ' + v : '') + '" title="measured over the last 30 minutes">+' +
     p.perHour + '%/h · full ~' + fmtClock(p.fullAt) + verdict + '</div>';
+}
+// Mini-grafiek: gemeten verloop, gestippelde extrapolatie naar 100% en het reset-moment
+function paceChart(l) {
+  const h = l.history || [];
+  if (h.length < 2) return '<div class="empty">collecting data — the projection needs about 10 minutes of measurements</div>';
+  const now = Date.now();
+  const p = l.pace;
+  const resetMs = l.resetsAt ? Date.parse(l.resetsAt) : NaN;
+  const last = h[h.length - 1];
+  const x0 = h[0].at;
+  let x1 = Math.max(now, last.at);
+  if (p) x1 = Math.max(x1, p.fullAt);
+  if (Number.isFinite(resetMs)) x1 = Math.max(x1, resetMs);
+  x1 += Math.max((x1 - x0) * 0.04, 60000);
+  const W = 560, H = 132, L = 26, R = 8, T = 12, B = 16;
+  const X = (t) => L + ((t - x0) / (x1 - x0)) * (W - L - R);
+  const Y = (pct) => T + (1 - pct / 100) * (H - T - B);
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="measured usage and projection to 100%">';
+  for (const g of [0, 50, 100]) {
+    s += '<line class="pgrid" x1="' + L + '" y1="' + Y(g) + '" x2="' + (W - R) + '" y2="' + Y(g) + '"' + (g === 100 ? ' stroke-dasharray="3 3"' : '') + '/>' +
+      '<text x="' + (L - 5) + '" y="' + (Y(g) + 3) + '" text-anchor="end">' + g + '</text>';
+  }
+  if (Number.isFinite(resetMs)) {
+    const rx = X(resetMs);
+    s += '<line x1="' + rx + '" y1="' + (T - 4) + '" x2="' + rx + '" y2="' + (H - B) + '" stroke="var(--ink-3)" stroke-dasharray="4 3"/>' +
+      '<text x="' + Math.min(rx, W - 62) + '" y="' + (T - 5) + '" text-anchor="' + (rx > W - 70 ? 'end' : 'middle') + '">reset ' + fmtClock(resetMs) + '</text>';
+  }
+  if (p) {
+    const col = { crit: 'var(--err)', warn: 'var(--signal)' }[paceVerdict(p, resetMs)] || 'var(--ink-3)';
+    s += '<line x1="' + X(last.at) + '" y1="' + Y(last.percent) + '" x2="' + X(p.fullAt) + '" y2="' + Y(100) + '" stroke="' + col + '" stroke-width="2" stroke-dasharray="5 4"/>' +
+      '<circle cx="' + X(p.fullAt) + '" cy="' + Y(100) + '" r="3" fill="' + col + '"/>';
+  }
+  s += '<polyline points="' + h.map((q) => X(q.at).toFixed(1) + ',' + Y(q.percent).toFixed(1)).join(' ') +
+    '" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round"/>' +
+    '<circle cx="' + X(last.at) + '" cy="' + Y(last.percent) + '" r="3.5" fill="var(--data)" stroke="var(--surface)" stroke-width="2"/>';
+  // onzichtbare hover-doelen per meetpunt (tooltip via de bestaande showTip)
+  s += h.map((q) => '<circle class="ppt" data-at="' + q.at + '" data-pct="' + q.percent +
+    '" cx="' + X(q.at).toFixed(1) + '" cy="' + Y(q.percent).toFixed(1) + '" r="7" fill="transparent"/>').join('');
+  s += '<text x="' + L + '" y="' + (H - 4) + '">' + fmtClock(x0) + '</text>' +
+    '<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">' + fmtClock(x1) + '</text>';
+  const nx = X(now);
+  if (nx > L + 50 && nx < W - R - 50) {
+    s += '<line x1="' + nx + '" y1="' + (H - B) + '" x2="' + nx + '" y2="' + (H - B + 4) + '" stroke="var(--ink-3)"/>' +
+      '<text x="' + nx + '" y="' + (H - 4) + '" text-anchor="middle">now</text>';
+  }
+  return s + '</svg>';
+}
+function paceStats(l) {
+  const p = l.pace;
+  if (!p) return '';
+  const now = Date.now();
+  const resetMs = l.resetsAt ? Date.parse(l.resetsAt) : NaN;
+  const v = paceVerdict(p, resetMs);
+  const rows = [['pace 30 min', '+' + p.perHour + '%/h', '']];
+  if (p.perHour10 != null) {
+    const d = p.perHour10 - p.perHour;
+    const trend = Math.abs(d) < Math.max(1, p.perHour * 0.15) ? '→ steady' : (d > 0 ? '↑ speeding up' : '↓ slowing down');
+    rows.push(['pace 10 min', '+' + p.perHour10 + '%/h · ' + trend, '']);
+  }
+  rows.push(['remaining', (100 - l.percent) + '%', '']);
+  if (Number.isFinite(resetMs)) rows.push(['resets', fmtClock(resetMs) + ' · in ' + fmtDur(resetMs - now), '']);
+  let fullTxt = '~' + fmtClock(p.fullAt);
+  if (p.makesReset === true) fullTxt += ' · ' + fmtDur(p.fullAt - resetMs) + ' after the reset ✓';
+  if (p.makesReset === false) fullTxt += ' · ' + fmtDur(resetMs - p.fullAt) + ' before the reset ✗';
+  rows.push(['full at', fullTxt, v]);
+  if (p.sustainablePerHour != null) rows.push(['affordable', '+' + p.sustainablePerHour + '%/h still makes the reset', '']);
+  return '<div class="pacestats">' + rows.map(([k, val, cls]) =>
+    '<span class="k">' + k + '</span><span class="v' + (cls ? ' ' + cls : '') + '">' + val + '</span>').join('') + '</div>';
 }
 function limitLabel(l) {
   if (l.kind === 'session') return 'Session (5 hours)';
@@ -627,11 +713,13 @@ function renderPlan(p) {
     '</div>';
   html += '<div class="meters">' + (p.limits || []).map((l) => {
     const sev = l.severity === 'warning' ? ' warn' : (l.severity && l.severity !== 'normal') ? ' crit' : '';
-    return '<div class="meter"><div class="mhead"><span>' + esc(limitLabel(l)) +
+    return '<details class="meter"' + detAttrs('pace:' + l.kind + ':' + (l.scope || ''), false) + '><summary>' +
+      '<div class="mhead"><span>' + esc(limitLabel(l)) +
       (l.isActive ? ' <span class="tag">active</span>' : '') + '</span>' +
       '<span class="mval">' + esc(l.percent) + '%</span></div>' +
       '<div class="mtrack"><div class="mfill' + sev + '" style="width:' + Math.min(100, l.percent || 0) + '%"></div></div>' +
-      '<div class="mreset">' + fmtReset(l.resetsAt) + '</div>' + paceLine(l) + '</div>';
+      '<div class="mreset">' + fmtReset(l.resetsAt) + '</div>' + paceLine(l) + '</summary>' +
+      '<div class="pacedetail">' + paceChart(l) + paceStats(l) + '</div></details>';
   }).join('') + '</div>';
   if (p.spend) {
     const cur = (m) => (m / 100).toLocaleString('en-US', { style: 'currency', currency: p.spend.currency || 'EUR' });
@@ -961,9 +1049,11 @@ document.addEventListener('mouseover', (e) => {
     const d = usageDataForTip[bar.dataset.i];
     showTip(e, esc(d.day) + '<br><b>' + nf.format(d.tokens) + '</b> tokens · ' + nf.format(d.turns) + ' turns');
   }
+  const pt = e.target.closest('.ppt');
+  if (pt) showTip(e, fmtClock(Number(pt.dataset.at)) + '<br><b>' + esc(pt.dataset.pct) + '%</b>');
 });
 document.addEventListener('mousemove', (e) => {
-  if (tooltip.style.display === 'block' && !e.target.closest('.bar')) hideTip();
+  if (tooltip.style.display === 'block' && !e.target.closest('.bar, .ppt')) hideTip();
 });
 refresh();
 setInterval(refresh, 3000);
