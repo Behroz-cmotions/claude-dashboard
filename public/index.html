@@ -589,6 +589,13 @@ function limitLabel(l) {
   return l.kind;
 }
 function renderPlan(p) {
+  if (p.authMethod) {
+    const label = { 'api-key': 'API key', bedrock: 'AWS Bedrock', vertex: 'Google Vertex AI' }[p.authMethod] || p.authMethod;
+    return '<div class="planhead"><span class="planbadge">' + esc(label) + '</span>' +
+      '<span class="dim mono" style="font-size:11px" title="where this was detected">' + esc(p.source || '') + '</span></div>' +
+      '<div class="dim" style="font-size:12px">Pay-per-use billing — there are no subscription limits to show. ' +
+      'Usage and costs are in the provider console.</div>';
+  }
   const planName = { max: 'Max', pro: 'Pro', free: 'Free' }[p.plan] || p.plan;
   let html = '<div class="planhead"><span class="planbadge">' + esc(planName) + '</span>' +
     (p.tier ? '<span class="dim mono" style="font-size:11px">' + esc(p.tier) + '</span>' : '') +

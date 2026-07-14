@@ -265,9 +265,107 @@ test('scanPlan reads plan from credentials and limits from the usage API', async
 
 test('scanPlan throws a clear error without credentials or on API failure', async () => {
   const dir = makeClaudeDir();
-  await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: true })), /credentials/);
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    /credentials/
+  );
   fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
   await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
+});
+
+test('scanPlan herkent een API-key via settings.json zonder de usage-API aan te roepen', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKeyHelper: 'C:\\keys\\helper.ps1' }));
+  let fetchCalled = false;
+  const out = await scanners.scanPlan(dir, async () => { fetchCalled = true; return { ok: true }; },
+    { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /apiKeyHelper/);
+  assert.deepStrictEqual(out.limits, []);
+  assert.strictEqual(out.spend, null);
+  assert.strictEqual(fetchCalled, false, 'geen usage-API-call bij een API-key');
+});
+
+test('scanPlan herkent Bedrock en Vertex via settings.json env', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CLAUDE_CODE_USE_BEDROCK: '1' } }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'bedrock');
+
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CLAUDE_CODE_USE_VERTEX: '1' } }));
+  const out2 = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out2.authMethod, 'vertex');
+});
+
+test('scanPlan herkent een goedgekeurde API-key in .claude.json', async () => {
+  const dir = makeClaudeDir();
+  const home = makeClaudeDir();
+  fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ customApiKeyResponses: { approved: ['sk-tail'] } }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: home });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /\.claude\.json/);
+});
+
+test('scanPlan herkent ANTHROPIC_API_KEY in de proces-omgeving', async () => {
+  const dir = makeClaudeDir();
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true }),
+    { platform: 'win32', env: { ANTHROPIC_API_KEY: 'sk-x' }, homeDir: dir });
+  assert.strictEqual(out.authMethod, 'api-key');
+  assert.match(out.source, /environment/);
+});
+
+test('scanPlan geeft OAuth voorrang boven API-key-sporen', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'pro' } }));
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKeyHelper: 'x' }));
+  const out = await scanners.scanPlan(dir, async () => ({ ok: true, status: 200, json: async () => ({ limits: [] }) }),
+    { platform: 'win32', env: {}, homeDir: dir });
+  assert.strictEqual(out.plan, 'pro');
+  assert.strictEqual(out.authMethod, undefined);
+});
+
+test('scanPlan valt op macOS terug op de Keychain als .credentials.json ontbreekt', async () => {
+  const dir = makeClaudeDir();
+  let capturedCmd = null;
+  const fakeExec = (cmd, args) => {
+    capturedCmd = [cmd, ...args];
+    return JSON.stringify({ claudeAiOauth: { accessToken: 'tok-mac', subscriptionType: 'pro' } }) + '\n';
+  };
+  let capturedHeaders = null;
+  const fakeFetch = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => ({ limits: [] }) };
+  };
+  const out = await scanners.scanPlan(dir, fakeFetch, { platform: 'darwin', execFileSync: fakeExec });
+  assert.strictEqual(out.plan, 'pro');
+  assert.ok(capturedHeaders.Authorization.includes('tok-mac'));
+  assert.strictEqual(capturedCmd[0], 'security');
+  assert.ok(capturedCmd.includes('Claude Code-credentials'));
+});
+
+test('scanPlan op macOS geeft de duidelijke fout als ook de Keychain niets oplevert', async () => {
+  const dir = makeClaudeDir();
+  const failingExec = () => {
+    throw new Error('security: SecKeychainSearchCopyNext: The specified item could not be found.');
+  };
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'darwin', execFileSync: failingExec }),
+    /credentials/
+  );
+});
+
+test('scanPlan gebruikt .credentials.json ook op macOS als het bestand er wél is', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'tok-file', subscriptionType: 'max' } }));
+  let execCalled = false;
+  const fakeExec = () => {
+    execCalled = true;
+    return '{}';
+  };
+  const fakeFetch = async () => ({ ok: true, status: 200, json: async () => ({ limits: [] }) });
+  const out = await scanners.scanPlan(dir, fakeFetch, { platform: 'darwin', execFileSync: fakeExec });
+  assert.strictEqual(out.plan, 'max');
+  assert.strictEqual(execCalled, false, 'geen Keychain-call als het bestand volstaat');
 });
 
 test('createPlanSection valt na een herstart bij 429 terug op de bewaarde stand', async () => {
