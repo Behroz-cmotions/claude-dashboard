@@ -385,6 +385,95 @@ test('scanPlan gebruikt .credentials.json ook op macOS als het bestand er wél i
   assert.strictEqual(execCalled, false, 'geen Keychain-call als het bestand volstaat');
 });
 
+test('computePace rekent %/uur, 100%-tijdstip en of de reset gehaald wordt', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 25 * 60000, percent: 40 },
+    { at: now - 12 * 60000, percent: 53 },
+    { at: now, percent: 66 },
+  ];
+  const resetsAt = new Date(now + 60 * 60000).toISOString();
+  const pace = scanners.computePace(history, now, resetsAt);
+  assert.ok(pace.perHour > 61 && pace.perHour < 64, 'ongeveer 62%/h, was ' + pace.perHour);
+  // 34% te gaan bij ~62.4%/h ≈ 32,7 min
+  assert.ok(pace.fullAt > now + 30 * 60000 && pace.fullAt < now + 36 * 60000);
+  assert.strictEqual(pace.makesReset, false, '100% valt vóór de reset');
+});
+
+test('computePace geeft true als de reset vóór het 100%-tijdstip valt en null zonder resetsAt', () => {
+  const now = Date.now();
+  const history = [
+    { at: now - 20 * 60000, percent: 90 },
+    { at: now, percent: 91 },
+  ];
+  const soonReset = new Date(now + 10 * 60000).toISOString();
+  assert.strictEqual(scanners.computePace(history, now, soonReset).makesReset, true);
+  assert.strictEqual(scanners.computePace(history, now, null).makesReset, null);
+});
+
+test('computePace geeft null bij te weinig data, te korte spreiding of vlak verbruik', () => {
+  const now = Date.now();
+  assert.strictEqual(scanners.computePace([{ at: now, percent: 50 }], now, null), null);
+  assert.strictEqual(scanners.computePace([
+    { at: now - 5 * 60000, percent: 50 },
+    { at: now, percent: 55 },
+  ], now, null), null, 'minder dan 10 minuten spreiding');
+  assert.strictEqual(scanners.computePace([
+    { at: now - 20 * 60000, percent: 50 },
+    { at: now, percent: 50 },
+  ], now, null), null, 'vlak verbruik');
+});
+
+test('createPlanSection bouwt history op en decoreert limieten met pace', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'max' } }));
+  const now = Date.now();
+  const resetsAt = new Date(now + 60 * 60000).toISOString();
+  // geseede history van een eerdere serverstart, snapshot ouder dan de verscache
+  fs.writeFileSync(path.join(dir, 'dashboard-plan-cache.json'), JSON.stringify({
+    at: now - 5 * 60000,
+    data: null,
+    history: { 'session:': [
+      { at: now - 25 * 60000, percent: 40 },
+      { at: now - 12 * 60000, percent: 53 },
+    ] },
+  }));
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 66, severity: 'normal', resets_at: resetsAt, is_active: true, scope: null }],
+  };
+  const getPlan = scanners.createPlanSection(dir, async () => ({ ok: true, status: 200, json: async () => apiResponse }));
+  const out = await getPlan();
+  const limit = out.data.limits[0];
+  assert.ok(limit.pace, 'limiet heeft een pace-projectie');
+  assert.ok(limit.pace.perHour > 55, 'stijgende pace gemeten');
+  assert.strictEqual(limit.pace.makesReset, false);
+  // history is bijgewerkt en bewaard in de snapshot
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'dashboard-plan-cache.json'), 'utf8'));
+  assert.strictEqual(snap.history['session:'].length, 3);
+});
+
+test('createPlanSection begint de history opnieuw na een reset (percentage daalt)', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't' } }));
+  const now = Date.now();
+  fs.writeFileSync(path.join(dir, 'dashboard-plan-cache.json'), JSON.stringify({
+    at: now - 5 * 60000,
+    data: null,
+    history: { 'session:': [
+      { at: now - 30 * 60000, percent: 80 },
+      { at: now - 15 * 60000, percent: 95 },
+    ] },
+  }));
+  const apiResponse = {
+    limits: [{ kind: 'session', percent: 3, severity: 'normal', resets_at: null, is_active: true, scope: null }],
+  };
+  const getPlan = scanners.createPlanSection(dir, async () => ({ ok: true, status: 200, json: async () => apiResponse }));
+  const out = await getPlan();
+  assert.strictEqual(out.data.limits[0].pace, null, 'geen projectie direct na een reset');
+  const snap = JSON.parse(fs.readFileSync(path.join(dir, 'dashboard-plan-cache.json'), 'utf8'));
+  assert.strictEqual(snap.history['session:'].length, 1, 'history begint opnieuw');
+});
+
 test('createPlanSection valt na een herstart bij 429 terug op de bewaarde stand', async () => {
   const dir = makeClaudeDir();
   fs.writeFileSync(
