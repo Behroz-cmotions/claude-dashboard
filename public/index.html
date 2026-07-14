@@ -21,12 +21,15 @@
   body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); min-height: 100vh; }
 
   /* ── Ops-strip (signatuur) ─────────────────────────────── */
-  .ops {
+  .topbar {
     position: sticky; top: 0; z-index: 10;
-    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
-    padding: 12px 24px; border-bottom: 1px solid var(--line);
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .ops {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    padding: 12px 24px; border-bottom: 1px solid var(--line);
   }
   .wordmark { font: 700 15px/1 var(--mono); letter-spacing: 2px; white-space: nowrap; }
   .wordmark em { font-style: normal; color: var(--data); }
@@ -40,13 +43,28 @@
   #conn.lost { color: var(--err); }
   #conn.lost .beacon { background: var(--err); animation: none; }
 
+  /* ── Tabs ──────────────────────────────────────────────── */
+  .tabs { display: flex; gap: 2px; padding: 0 16px; }
+  .tab {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 11px 14px 10px; color: var(--ink-3);
+    font: 500 11px/1 var(--mono); letter-spacing: 2px; text-transform: uppercase;
+  }
+  .tab:hover { color: var(--ink-2); }
+  .tab.on { color: var(--ink); border-bottom-color: var(--data); }
+  .tab:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
+  .tab .tbadge {
+    font: 500 10px/1 var(--mono); color: var(--data); font-variant-numeric: tabular-nums;
+    background: var(--inset); border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px;
+  }
+  .tab .tbadge:empty { display: none; }
+  .tab .tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); animation: pulse 1.2s ease-in-out infinite; }
+
   /* ── Secties & panelen ─────────────────────────────────── */
   main { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 26px; max-width: 1800px; margin: 0 auto; }
-  .zone > .zone-label {
-    font: 400 10px/1 var(--mono); letter-spacing: 2.5px; text-transform: uppercase;
-    color: var(--ink-3); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
-  }
-  .zone > .zone-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .zone { display: none; }
+  .zone.on { display: block; }
   .grid { display: grid; gap: 14px; }
   .g-now { grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); }
   .g-usage { grid-template-columns: 2fr 1fr; }
@@ -54,6 +72,13 @@
   @media (max-width: 900px) { .g-usage { grid-template-columns: 1fr; } }
 
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .panel > .body {
+    max-height: 420px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  }
+  .panel > .body::-webkit-scrollbar { width: 8px; }
+  .panel > .body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  .panel > .body::-webkit-scrollbar-track { background: transparent; }
   .panel h2 {
     display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
     font: 600 11px/1 var(--mono); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-2);
@@ -203,6 +228,7 @@
 </style>
 </head>
 <body>
+<div class="topbar">
 <header class="ops">
   <div class="wordmark">CLAUDE<em>//</em>DASHBOARD</div>
   <div class="kpis">
@@ -215,12 +241,19 @@
   </div>
   <div id="conn"><span class="beacon"></span><span id="conn-t">verbinden…</span></div>
 </header>
+<nav class="tabs" role="tablist" aria-label="Dashboard-secties">
+  <button class="tab" role="tab" id="tab-nu" data-tab="nu" aria-controls="zone-nu">Nu <span class="tbadge" id="tb-nu"></span><span class="tdot" id="td-nu" hidden></span></button>
+  <button class="tab" role="tab" id="tab-verbruik" data-tab="verbruik" aria-controls="zone-verbruik">Verbruik</button>
+  <button class="tab" role="tab" id="tab-naslag" data-tab="naslag" aria-controls="zone-naslag">Naslag</button>
+  <button class="tab" role="tab" id="tab-archief" data-tab="archief" aria-controls="zone-archief">Archief</button>
+</nav>
+</div>
 
 <main>
-  <section class="zone">
-    <div class="zone-label">Nu</div>
+  <div class="panel" id="p-waiting" hidden><h2>Wacht op jou <span class="count"></span></h2><div class="body"></div></div>
+
+  <section class="zone" id="zone-nu" role="tabpanel" aria-labelledby="tab-nu">
     <div class="grid g-now">
-      <div class="panel" id="p-waiting" hidden><h2>Wacht op jou <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-plan"><h2>Plan &amp; limieten <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-sessions"><h2>Sessies &amp; terminals <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-activity"><h2>Live activiteit <span class="count"></span></h2><div class="body"></div></div>
@@ -229,8 +262,7 @@
     </div>
   </section>
 
-  <section class="zone">
-    <div class="zone-label">Verbruik</div>
+  <section class="zone" id="zone-verbruik" role="tabpanel" aria-labelledby="tab-verbruik">
     <div class="grid">
       <div class="panel" id="p-token-drill"><h2>Tokens per project &amp; sessie <span class="count"></span></h2><div class="body"></div></div>
     </div>
@@ -243,8 +275,7 @@
     </div>
   </section>
 
-  <section class="zone">
-    <div class="zone-label">Naslag</div>
+  <section class="zone" id="zone-naslag" role="tabpanel" aria-labelledby="tab-naslag">
     <div class="grid g-ref">
       <div class="panel" id="p-agents"><h2>Agents <span class="count"></span><button class="act" data-act="new" data-what="agent">+ nieuw</button></h2><div class="body"></div></div>
       <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span><button class="act" data-act="new" data-what="hook">+ nieuw</button></h2><div class="body"></div></div>
@@ -255,8 +286,7 @@
     </div>
   </section>
 
-  <section class="zone">
-    <div class="zone-label">Archief</div>
+  <section class="zone" id="zone-archief" role="tabpanel" aria-labelledby="tab-archief">
     <div class="grid">
       <div class="panel" id="p-projects"><h2>Projecten &amp; sessies <span class="count"></span></h2><div class="body"></div></div>
       <div class="panel" id="p-history"><h2>Recente prompts <span class="count"></span></h2><div class="body"></div></div>
@@ -436,6 +466,32 @@ function confirmHookDelete(h) {
       toast('hook verwijderd');
     });
 }
+
+/* ── tabs ──────────────────────────────────────────────── */
+const TABS = ['nu', 'verbruik', 'naslag', 'archief'];
+let waitingCount = 0;
+let activeTab = localStorage.getItem('dash.tab');
+if (!TABS.includes(activeTab)) activeTab = 'nu';
+// attentie-stip op "Nu" alleen als er iets wacht én je op een andere tab staat
+function updateWaitDot() {
+  document.getElementById('td-nu').hidden = !(waitingCount && activeTab !== 'nu');
+}
+function setTab(t) {
+  activeTab = t;
+  localStorage.setItem('dash.tab', t);
+  for (const name of TABS) {
+    document.getElementById('zone-' + name).classList.toggle('on', name === t);
+    const btn = document.getElementById('tab-' + name);
+    btn.classList.toggle('on', name === t);
+    btn.setAttribute('aria-selected', name === t);
+  }
+  updateWaitDot();
+}
+document.querySelector('.tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (btn) setTab(btn.dataset.tab);
+});
+setTab(activeTab);
 
 // uitklap-status overleeft re-renders: gebruikerskeuzes gaan vóór defaults
 const detailsState = new Map();
@@ -832,6 +888,9 @@ async function refresh() {
     const waiting = (state.waiting && state.waiting.data) || [];
     document.getElementById('p-waiting').hidden = !waiting.length;
     if (waiting.length) panel('#p-waiting', state.waiting, renderWaiting);
+    waitingCount = waiting.length;
+    updateWaitDot();
+    document.getElementById('tb-nu').textContent = sessions.length || '';
 
     panel('#p-plan', state.plan, renderPlan);
     panel('#p-sessions', state.sessions, renderSessions);
