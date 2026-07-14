@@ -22,8 +22,6 @@ Open daarna **http://127.0.0.1:4545** in je browser.
 
 Andere poort nodig? Start met `PORT=8080 node server.js` (PowerShell: `$env:PORT='8080'; node server.js`).
 
-> Privérepo: vraag de eigenaar je GitHub-account als collaborator toe te voegen en log eenmalig in met `gh auth login` (of laat Git Credential Manager het loginvenster tonen bij het clonen).
-
 ## Veiligheid
 
 - De server bindt **alleen op 127.0.0.1** en is dus niet bereikbaar vanaf het netwerk. Zo houden: het dashboard praat server-side met je Claude OAuth-token en kan bestanden bewerken en sessies stoppen.
