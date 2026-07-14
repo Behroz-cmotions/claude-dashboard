@@ -273,6 +273,23 @@ test('scanPlan throws a clear error without credentials or on API failure', asyn
   await assert.rejects(() => scanners.scanPlan(dir, async () => ({ ok: false, status: 401 })), /401/);
 });
 
+test('scanPlan noemt de remote-setup-hint als .credentials.json bestaat maar leeg is', async () => {
+  const dir = makeClaudeDir();
+  fs.writeFileSync(path.join(dir, '.credentials.json'), '');
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    (err) => /credentials/.test(err.message) && /empty/.test(err.message) && /SSH tunnel/.test(err.message)
+  );
+});
+
+test('scanPlan noemt de remote-setup-hint ook als .credentials.json ontbreekt', async () => {
+  const dir = makeClaudeDir();
+  await assert.rejects(
+    () => scanners.scanPlan(dir, async () => ({ ok: true }), { platform: 'win32', env: {}, homeDir: dir }),
+    (err) => /credentials/.test(err.message) && /remote/.test(err.message)
+  );
+});
+
 test('scanPlan herkent een API-key via settings.json zonder de usage-API aan te roepen', async () => {
   const dir = makeClaudeDir();
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKeyHelper: 'C:\\keys\\helper.ps1' }));
