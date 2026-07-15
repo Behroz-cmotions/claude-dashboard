@@ -223,9 +223,6 @@
     box-shadow: 0 6px 24px rgba(0, 0, 0, .4);
   }
   .restore-chip:hover { background: var(--inset); }
-  .moverow { display: flex; gap: 10px; align-items: flex-start; background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
-  .moverow input { margin-top: 3px; width: 15px; height: 15px; accent-color: var(--err); flex: none; }
-  .moverow.on { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, var(--inset)); }
   .btn.move { background: var(--err); border-color: var(--err); color: #0A0D14; font-weight: 600; }
   .btn.move:hover { filter: brightness(1.1); }
 
@@ -253,6 +250,12 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: 400 13px var(--mono);
   }
   .form input:focus, .form select:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+  /* na de .form-regels: die zetten inputs op width:100% en dat mag het
+     move-vinkje niet raken */
+  .moverow { display: flex; gap: 10px; align-items: flex-start; background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+  .form .moverow input { width: 15px; height: 15px; margin: 3px 0 0; padding: 0; accent-color: var(--err); flex: none; }
+  .moverow span { min-width: 0; }
+  .moverow.on { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, var(--inset)); }
   .filters { display: flex; gap: 6px; margin-bottom: 10px; }
   .act.on { color: var(--data); border-color: var(--data); background: var(--inset); }
   .refbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 12px; }
