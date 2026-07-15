@@ -852,11 +852,12 @@ function renderHooks(data) {
 function renderSkills(data) {
   const skills = data.skills || [];
   const plugins = data.plugins || [];
-  let html = '<table><tr><th>Skill</th><th></th></tr>' +
+  let html = '<table><tr><th>Skill</th><th>Scope</th><th></th></tr>' +
     skills.map((s) =>
       '<tr><td><span class="mono">' + esc(s.name) + '</span>' +
       (s.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(s.description) + '">' + esc(s.description) + '</div>' : '') +
-      '</td><td class="acts">' + actView(s.skillFile, 'skill') + actDel(s.path, s.name) + '</td></tr>'
+      '</td><td><span class="tag" title="' + esc(s.scope || 'global') + '">' + esc(!s.scope || s.scope === 'global' ? 'global' : 'project') + '</span></td>' +
+      '<td class="acts">' + actView(s.skillFile, 'skill') + actDel(s.path, s.name) + '</td></tr>'
     ).join('') + '</table>';
   if (plugins.length) {
     html += '<div style="margin-top:10px">' + plugins.map((p) =>
