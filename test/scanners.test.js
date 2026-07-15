@@ -228,6 +228,17 @@ test('scanSkills merges global and project skills with a scope field', () => {
   assert.strictEqual(projectSkill.skillFile, path.join(proj, '.claude', 'skills', 'deploy', 'SKILL.md'));
 });
 
+test('scanSkills marks symlinked skills with isLink', () => {
+  const dir = makeClaudeDir();
+  fs.mkdirSync(path.join(dir, 'skills', 'echt'), { recursive: true });
+  const elders = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skill-src-'));
+  fs.writeFileSync(path.join(elders, 'SKILL.md'), '---\nname: gelinkt\n---\n');
+  fs.symlinkSync(elders, path.join(dir, 'skills', 'gelinkt'), 'junction');
+  const out = scanners.scanSkills(dir);
+  assert.strictEqual(out.skills.find((s) => s.name === 'echt').isLink, false);
+  assert.strictEqual(out.skills.find((s) => s.name === 'gelinkt').isLink, true);
+});
+
 test('scanMcpServers reads global and project servers from .claude.json', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-home-'));
   fs.writeFileSync(
