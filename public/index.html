@@ -236,6 +236,8 @@
   .form input:focus, .form select:focus { outline: 2px solid var(--data); outline-offset: -1px; }
   .filters { display: flex; gap: 6px; margin-bottom: 10px; }
   .act.on { color: var(--data); border-color: var(--data); background: var(--inset); }
+  .refbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 12px; }
+  .refbar:empty { display: none; }
 
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) {
@@ -292,6 +294,7 @@
   </section>
 
   <section class="zone" id="zone-reference" role="tabpanel" aria-labelledby="tab-reference">
+    <div class="refbar" id="ref-filter"></div>
     <div class="grid g-ref">
       <div class="panel" id="p-agents"><h2>Agents <span class="count"></span><button class="act" data-act="new" data-what="agent">+ new</button></h2><div class="body"></div></div>
       <div class="panel" id="p-hooks"><h2>Hooks <span class="count"></span><button class="act" data-act="new" data-what="hook">+ new</button></h2><div class="body"></div></div>
@@ -520,6 +523,48 @@ document.addEventListener('toggle', (e) => {
   if (d.tagName === 'DETAILS' && d.dataset.key) detailsState.set(d.dataset.key, d.open);
 }, true);
 
+/* ── reference-scopefilter ─────────────────────────────── */
+let refScope = localStorage.getItem('dash.refscope') || 'all';
+// agents en skills hebben `scope`, hooks `source`; ontbreekt het veld dan globaal.
+// Paden komen met / (.claude.json) of \ (scanners) binnen: normaliseer naar \
+// zodat hetzelfde project niet twee filterknoppen krijgt.
+function scopeOf(x) { return String(x.scope || x.source || 'global').replace(/\//g, '\\'); }
+
+// alle projectscopes die daadwerkelijk in de data voorkomen
+function refScopes(state) {
+  const scopes = new Set();
+  for (const key of ['agents', 'hooks', 'mcpServers']) {
+    for (const item of (state[key] && state[key].data) || []) {
+      const s = scopeOf(item);
+      if (s !== 'global') scopes.add(s);
+    }
+  }
+  for (const s of (((state.skills && state.skills.data) || {}).skills) || []) {
+    const sc = scopeOf(s);
+    if (sc !== 'global') scopes.add(sc);
+  }
+  return [...scopes].sort();
+}
+
+function renderRefFilter(state) {
+  const scopes = refScopes(state);
+  // verdwenen project (bv. opgeruimd): val terug op 'all'
+  if (refScope !== 'all' && refScope !== 'global' && !scopes.includes(refScope)) refScope = 'all';
+  const btn = (val, label, title) =>
+    '<button class="act' + (refScope === val ? ' on' : '') + '" data-act="refscope" data-val="' + esc(val) + '"' +
+    (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(label) + '</button>';
+  document.getElementById('ref-filter').innerHTML =
+    '<span class="dim" style="font-size:12px;margin-right:4px">scope</span>' +
+    btn('all', 'all') + btn('global', 'global') +
+    scopes.map((p) => btn(p, p.split('\\').pop(), p)).join('');
+}
+
+// filtert de data van een sectie op de gekozen scope; errors blijven zichtbaar
+function scopeFilter(section, pick) {
+  if (refScope === 'all' || !section || !section.data) return section;
+  return { ...section, data: pick(section.data) };
+}
+
 /* ── create new ────────────────────────────────────────── */
 const HOOK_EVENTS = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionStart', 'SessionEnd', 'Notification', 'SubagentStart', 'SubagentStop', 'PreCompact'];
 const createDlg = document.getElementById('create');
@@ -578,6 +623,7 @@ document.addEventListener('click', (e) => {
   else if (d.act === 'reveal') post('/api/file/reveal', { path: d.path }).catch((err) => toast(err.message, true));
   else if (d.act === 'new') openCreate(d.what);
   else if (d.act === 'period') { tokenPeriod = d.val; refresh(); }
+  else if (d.act === 'refscope') { refScope = d.val; localStorage.setItem('dash.refscope', refScope); refresh(); }
   else if (d.act === 'copy') {
     navigator.clipboard.writeText(d.text).then(() => toast('copied: ' + d.text), () => toast('copy failed', true));
   }
@@ -1030,11 +1076,20 @@ async function refresh() {
     document.querySelector('#p-token-drill .count').textContent = tu ? compact(tu.total) : '';
     panel('#p-usage-models', state.usage, renderModels);
     panel('#p-usage-tools', state.usage, renderTools);
-    panel('#p-agents', state.agents, renderAgents);
-    panel('#p-hooks', state.hooks, renderHooks);
-    panel('#p-skills', state.skills, renderSkills);
-    panel('#p-mcp', state.mcpServers, renderMcp);
+    renderRefFilter(state);
+    const bySc = (arr) => (arr || []).filter((x) => scopeOf(x) === refScope);
+    panel('#p-agents', scopeFilter(state.agents, bySc), renderAgents);
+    panel('#p-hooks', scopeFilter(state.hooks, bySc), renderHooks);
+    panel('#p-skills', scopeFilter(state.skills, (d) => ({
+      skills: bySc(d.skills),
+      // plugins zijn per definitie globaal: alleen tonen bij 'all' of 'global'
+      plugins: refScope === 'global' ? d.plugins : [],
+    })), renderSkills);
+    panel('#p-mcp', scopeFilter(state.mcpServers, bySc), renderMcp);
     panel('#p-loops', state.loops, renderLoops);
+    if (refScope !== 'all' && refScope !== 'global') {
+      document.querySelector('#p-loops .body').innerHTML = '<div class="empty">loops are always global</div>';
+    }
     panel('#p-projects', state.projects, renderProjects);
     panel('#p-history', state.history, renderHistory);
     document.querySelector('#p-usage-chart .count').textContent =
