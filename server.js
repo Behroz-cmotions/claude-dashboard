@@ -71,7 +71,7 @@ async function buildState(period) {
   wrap('usage', () => scanners.scanUsage(CLAUDE_DIR));
   wrap('activity', () => scanners.scanActivity(CLAUDE_DIR, sessions));
   wrap('waiting', () => scanners.scanWaiting(CLAUDE_DIR, sessions));
-  wrap('skills', () => scanners.scanSkills(CLAUDE_DIR));
+  wrap('skills', () => scanners.scanSkills(CLAUDE_DIR, projectPaths));
   wrap('mcpServers', () => scanners.scanMcpServers(path.dirname(CLAUDE_DIR)));
   wrap('recentFiles', () => scanners.scanRecentFiles(CLAUDE_DIR));
   wrap('tokenUsage', () => scanners.scanTokenUsage(CLAUDE_DIR, tokenCache, titles, sinceDayFor(period)));

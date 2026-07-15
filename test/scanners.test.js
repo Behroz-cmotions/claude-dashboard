@@ -206,6 +206,28 @@ test('scanSkills lists skill dirs with frontmatter and enabled plugins', () => {
   assert.deepStrictEqual(out.plugins, [{ name: 'superpowers@claude-plugins-official', enabled: true }, { name: 'uit@x', enabled: false }]);
 });
 
+test('scanSkills merges global and project skills with a scope field', () => {
+  const dir = makeClaudeDir();
+  fs.mkdirSync(path.join(dir, 'skills', 'factuur'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'skills', 'factuur', 'SKILL.md'),
+    '---\nname: factuur\ndescription: Globale skill\n---\n'
+  );
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-proj-'));
+  fs.mkdirSync(path.join(proj, '.claude', 'skills', 'deploy'), { recursive: true });
+  fs.writeFileSync(
+    path.join(proj, '.claude', 'skills', 'deploy', 'SKILL.md'),
+    '---\nname: deploy\ndescription: Projectskill\n---\n'
+  );
+  const out = scanners.scanSkills(dir, [proj]);
+  assert.strictEqual(out.skills.length, 2);
+  const globalSkill = out.skills.find((s) => s.name === 'factuur');
+  const projectSkill = out.skills.find((s) => s.name === 'deploy');
+  assert.strictEqual(globalSkill.scope, 'global');
+  assert.strictEqual(projectSkill.scope, proj);
+  assert.strictEqual(projectSkill.skillFile, path.join(proj, '.claude', 'skills', 'deploy', 'SKILL.md'));
+});
+
 test('scanMcpServers reads global and project servers from .claude.json', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-home-'));
   fs.writeFileSync(
