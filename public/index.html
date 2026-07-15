@@ -238,6 +238,7 @@
   .act.on { color: var(--data); border-color: var(--data); background: var(--inset); }
   .refbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 12px; }
   .refbar:empty { display: none; }
+  .refbar select { font: 400 12px var(--mono); color: var(--ink); background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) {
@@ -546,17 +547,21 @@ function refScopes(state) {
   return [...scopes].sort();
 }
 
+let refFilterSig = '';
 function renderRefFilter(state) {
   const scopes = refScopes(state);
   // verdwenen project (bv. opgeruimd): val terug op 'all'
   if (refScope !== 'all' && refScope !== 'global' && !scopes.includes(refScope)) refScope = 'all';
-  const btn = (val, label, title) =>
-    '<button class="act' + (refScope === val ? ' on' : '') + '" data-act="refscope" data-val="' + esc(val) + '"' +
-    (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(label) + '</button>';
-  document.getElementById('ref-filter').innerHTML =
-    '<span class="dim" style="font-size:12px;margin-right:4px">scope</span>' +
-    btn('all', 'all') + btn('global', 'global') +
-    scopes.map((p) => btn(p, p.split('\\').pop(), p)).join('');
+  const el = document.getElementById('ref-filter');
+  // niet herbouwen als er niets wijzigde of de gebruiker het menu vasthoudt
+  const sig = refScope + '|' + scopes.join(';');
+  if (sig === refFilterSig || el.contains(document.activeElement)) return;
+  refFilterSig = sig;
+  const opt = (val, label) =>
+    '<option value="' + esc(val) + '"' + (refScope === val ? ' selected' : '') + '>' + esc(label) + '</option>';
+  el.innerHTML = '<label class="dim" style="font-size:12px" for="ref-scope-sel">scope</label>' +
+    '<select id="ref-scope-sel">' + opt('all', 'all') + opt('global', 'global (~/.claude)') +
+    scopes.map((p) => opt(p, p.split('\\').pop())).join('') + '</select>';
 }
 
 // filtert de data van een sectie op de gekozen scope; errors blijven zichtbaar
@@ -623,9 +628,17 @@ document.addEventListener('click', (e) => {
   else if (d.act === 'reveal') post('/api/file/reveal', { path: d.path }).catch((err) => toast(err.message, true));
   else if (d.act === 'new') openCreate(d.what);
   else if (d.act === 'period') { tokenPeriod = d.val; refresh(); }
-  else if (d.act === 'refscope') { refScope = d.val; localStorage.setItem('dash.refscope', refScope); refresh(); }
   else if (d.act === 'copy') {
     navigator.clipboard.writeText(d.text).then(() => toast('copied: ' + d.text), () => toast('copy failed', true));
+  }
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'ref-scope-sel') {
+    refScope = e.target.value;
+    localStorage.setItem('dash.refscope', refScope);
+    refFilterSig = '';
+    refresh();
   }
 });
 
