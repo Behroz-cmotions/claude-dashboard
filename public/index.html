@@ -519,7 +519,7 @@ function confirmDelete(label, filePath) {
     async () => { await post('/api/file/delete', { path: filePath }); toast(label + ' deleted'); });
 }
 function confirmStop(name, pid) {
-  askConfirm('Stop session', 'Stop session <b>' + esc(name) + '</b> (pid ' + esc(pid) + ')?<br><br>Unsaved work will be lost.',
+  askConfirm('Stop session', 'Stop session <b>' + esc(name) + '</b> (pid ' + esc(pid) + ')?<br><br>The terminal hosting it is closed too; unsaved work will be lost.',
     async () => { await post('/api/session/stop', { pid }); toast('session ' + name + ' stopped'); });
 }
 function confirmHookDelete(h) {

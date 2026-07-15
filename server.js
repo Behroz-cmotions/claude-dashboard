@@ -5,6 +5,7 @@ const os = require('os');
 const crypto = require('crypto');
 const scanners = require('./lib/scanners');
 const actions = require('./lib/actions');
+const proc = require('./lib/proc');
 
 const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
 const PORT = Number(process.env.PORT) || 4545;
@@ -104,12 +105,13 @@ function readBody(req) {
 }
 
 // Stopt een sessie. Alleen PID's die daadwerkelijk een geregistreerde sessie zijn:
-// zo kan het dashboard nooit een willekeurig proces afschieten.
+// zo kan het dashboard nooit een willekeurig proces afschieten. De hele boom
+// inclusief de dragende shell gaat mee, anders blijft de terminal in
+// mouse-tracking-modus achter en spuugt hij escape-rommel bij elke muisbeweging.
 function stopSession(pid) {
   const known = scanners.scanSessions(CLAUDE_DIR).some((s) => s.pid === pid);
   if (!known) throw new Error('no known session with pid ' + pid);
-  process.kill(pid);
-  return { stopped: pid };
+  return proc.killSessionTree(pid);
 }
 
 function revealFile(target, roots) {
