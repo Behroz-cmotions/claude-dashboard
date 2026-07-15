@@ -183,6 +183,7 @@
   dialog {
     border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
     padding: 0; width: min(900px, 92vw); max-height: 86vh;
+    margin: auto; /* de globale margin-reset haalt anders de standaard-centrering weg */
   }
   dialog::backdrop { background: rgba(6, 8, 12, .74); }
   .dlg-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
@@ -209,6 +210,24 @@
   .btn.danger { color: var(--err); border-color: var(--err); background: transparent; }
   .btn.danger:hover { background: color-mix(in srgb, var(--err) 16%, transparent); }
   .btn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+  .dlg-min {
+    margin-left: auto; background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--ink-3); cursor: pointer; font: 600 14px/1 var(--mono); padding: 2px 8px;
+  }
+  .dlg-min:hover { color: var(--ink); background: var(--inset); border-color: var(--line); }
+  .restore-chip {
+    position: fixed; right: 16px; bottom: 16px; z-index: 60;
+    background: var(--surface); border: 1px solid var(--data); border-radius: 999px;
+    color: var(--ink); font: 500 12px var(--mono); padding: 8px 14px; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .4);
+  }
+  .restore-chip:hover { background: var(--inset); }
+  .moverow { display: flex; gap: 10px; align-items: flex-start; background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+  .moverow input { margin-top: 3px; width: 15px; height: 15px; accent-color: var(--err); flex: none; }
+  .moverow.on { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, var(--inset)); }
+  .btn.move { background: var(--err); border-color: var(--err); color: #0A0D14; font-weight: 600; }
+  .btn.move:hover { filter: brightness(1.1); }
 
   .confirm-text { font-size: 13.5px; line-height: 1.6; }
   .confirm-text code { font: 400 12px var(--mono); background: var(--inset); padding: 1px 6px; border-radius: 4px; color: var(--ink); }
@@ -319,6 +338,7 @@
   <div class="dlg-head">
     <span class="t" id="v-kind">file</span>
     <span class="p" id="v-path"></span>
+    <button class="dlg-min" title="minimize — reopen from the chip at the bottom right">–</button>
   </div>
   <div class="dlg-body"><textarea id="v-content" spellcheck="false"></textarea></div>
   <div class="dlg-foot">
@@ -329,7 +349,7 @@
 </dialog>
 
 <dialog id="confirm">
-  <div class="dlg-head"><span class="t" id="c-title">confirm</span></div>
+  <div class="dlg-head"><span class="t" id="c-title">confirm</span><button class="dlg-min" title="minimize — reopen from the chip at the bottom right">–</button></div>
   <div class="dlg-body"><div class="confirm-text" id="c-text"></div></div>
   <div class="dlg-foot">
     <span class="msg"></span>
@@ -339,7 +359,7 @@
 </dialog>
 
 <dialog id="create">
-  <div class="dlg-head"><span class="t" id="n-title">new</span></div>
+  <div class="dlg-head"><span class="t" id="n-title">new</span><button class="dlg-min" title="minimize — reopen from the chip at the bottom right">–</button></div>
   <div class="dlg-body">
     <div class="form" id="n-form">
       <label id="n-name-row">Name<br><input id="n-name" type="text" placeholder="my-agent" spellcheck="false"></label>
@@ -359,11 +379,14 @@
 </dialog>
 
 <dialog id="transfer">
-  <div class="dlg-head"><span class="t" id="t-title">copy / move</span></div>
+  <div class="dlg-head"><span class="t" id="t-title">copy / move</span><button class="dlg-min" title="minimize — reopen from the chip at the bottom right">–</button></div>
   <div class="dlg-body">
     <div class="form">
       <label>Target<br><select id="t-target"></select></label>
-      <label id="t-move-row"><input id="t-move" type="checkbox"> delete original (move)</label>
+      <label id="t-move-row" class="moverow"><input id="t-move" type="checkbox">
+        <span><b>Move instead of copy</b><br>
+        <span class="dim" style="font-size:12px">Copy keeps the item in both places. Move puts it at the target and <b>deletes it from its current location</b>.</span></span>
+      </label>
       <div class="dim" id="t-note" style="font-size:12px" hidden>This skill is a symlink (plugin/marketplace): it can only be copied.</div>
     </div>
   </div>
@@ -375,6 +398,7 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
+<button class="restore-chip" id="restore-chip" hidden></button>
 
 <script>
 const ACTION_TOKEN = '__ACTION_TOKEN__';
@@ -646,9 +670,19 @@ function openTransfer(data) {
   move.checked = false;
   move.disabled = !!data.isLink;
   document.getElementById('t-note').hidden = !data.isLink;
+  setMoveState(false);
   const msg = document.getElementById('t-msg');
   msg.textContent = ''; msg.className = 'msg';
   transferDlg.showModal();
+}
+// het vinkje bepaalt de actie: Copy (blauw) of Move (rood, verwijdert de bron)
+function setMoveState(isMove) {
+  const ok = document.getElementById('t-ok');
+  ok.textContent = isMove ? 'Move' : 'Copy';
+  ok.className = 'btn ' + (isMove ? 'move' : 'primary');
+  document.getElementById('t-move-row').classList.toggle('on', isMove);
+  document.getElementById('t-title').textContent =
+    (isMove ? 'move ' : 'copy ') + transferItemData.what + ' · ' + transferItemData.label;
 }
 document.getElementById('t-cancel').onclick = () => transferDlg.close();
 document.getElementById('t-ok').onclick = async () => {
@@ -693,7 +727,28 @@ document.addEventListener('change', (e) => {
     refFilterSig = '';
     refresh();
   }
+  if (e.target.id === 't-move') setMoveState(e.target.checked);
 });
+
+/* ── dialoog minimaliseren en herstellen ───────────────── */
+// close() laat de DOM-staat (invoervelden, teksten) intact, dus herstellen
+// brengt de dialoog precies terug waar de gebruiker was
+let minimizedDlg = null;
+const restoreChip = document.getElementById('restore-chip');
+document.addEventListener('click', (e) => {
+  const min = e.target.closest('.dlg-min');
+  if (!min) return;
+  minimizedDlg = min.closest('dialog');
+  const title = minimizedDlg.querySelector('.dlg-head .t');
+  restoreChip.textContent = '▴ ' + ((title && title.textContent) || 'dialog');
+  minimizedDlg.close();
+  restoreChip.hidden = false;
+});
+restoreChip.onclick = () => {
+  restoreChip.hidden = true;
+  if (minimizedDlg) minimizedDlg.showModal();
+  minimizedDlg = null;
+};
 
 function actView(filePath, kind) {
   return '<button class="act" data-act="view" data-path="' + esc(filePath) + '" data-kind="' + esc(kind) + '" title="view / edit">edit</button>';
