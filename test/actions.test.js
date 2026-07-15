@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { isAllowedPath, removeHook, deletePath, saveFile, createFile, addHook } = require('../lib/actions');
+const { isAllowedPath, removeHook, deletePath, saveFile, createFile, addHook, copyPath, readHook } = require('../lib/actions');
 
 function tmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'aos-act-'));
@@ -133,4 +133,42 @@ test('removeHook refuses a settings file outside the root', () => {
   const outside = path.join(os.tmpdir(), 'aos-buiten-settings.json');
   fs.writeFileSync(outside, JSON.stringify({ hooks: { Stop: [{ hooks: [{ command: 'x' }] }] } }));
   assert.throws(() => removeHook(outside, 'Stop', 0, 0, [root]), /outside/i);
+});
+
+test('copyPath copies a file and a directory recursively inside the root', () => {
+  const root = tmpRoot();
+  fs.mkdirSync(path.join(root, 'skills', 'demo', 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'skills', 'demo', 'SKILL.md'), 'inhoud');
+  fs.writeFileSync(path.join(root, 'skills', 'demo', 'sub', 'extra.md'), 'extra');
+  fs.writeFileSync(path.join(root, 'agent.md'), 'agent');
+
+  const dirDest = copyPath(path.join(root, 'skills', 'demo'), path.join(root, 'skills2', 'demo'), [root]);
+  assert.strictEqual(fs.readFileSync(path.join(dirDest, 'SKILL.md'), 'utf8'), 'inhoud');
+  assert.strictEqual(fs.readFileSync(path.join(dirDest, 'sub', 'extra.md'), 'utf8'), 'extra');
+  // bron blijft staan: kopieren is niet verplaatsen
+  assert.ok(fs.existsSync(path.join(root, 'skills', 'demo', 'SKILL.md')));
+
+  const fileDest = copyPath(path.join(root, 'agent.md'), path.join(root, 'agents', 'agent.md'), [root]);
+  assert.strictEqual(fs.readFileSync(fileDest, 'utf8'), 'agent');
+});
+
+test('copyPath refuses an existing destination and paths outside the root', () => {
+  const root = tmpRoot();
+  fs.writeFileSync(path.join(root, 'a.md'), 'a');
+  fs.writeFileSync(path.join(root, 'b.md'), 'b');
+  assert.throws(() => copyPath(path.join(root, 'a.md'), path.join(root, 'b.md'), [root]), /already exists/);
+  assert.throws(() => copyPath(path.join(root, 'a.md'), path.join(os.tmpdir(), 'buiten.md'), [root]), /outside the allowed/);
+  assert.throws(() => copyPath(path.join(root, 'bestaat-niet.md'), path.join(root, 'c.md'), [root]), /source not found/);
+});
+
+test('readHook returns the real command and matcher at the given position', () => {
+  const root = tmpRoot();
+  const sp = path.join(root, 'settings.json');
+  fs.writeFileSync(sp, JSON.stringify({
+    hooks: { Stop: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'node done.js' }] }] },
+  }));
+  assert.deepStrictEqual(readHook(sp, 'Stop', 0, 0, [root]),
+    { event: 'Stop', matcher: 'Bash', command: 'node done.js' });
+  assert.throws(() => readHook(sp, 'Stop', 0, 5, [root]), /hook not found/);
+  assert.throws(() => readHook(sp, 'Onbekend', 0, 0, [root]), /hook not found/);
 });
