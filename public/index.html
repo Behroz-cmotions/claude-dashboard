@@ -358,6 +358,22 @@
   </div>
 </dialog>
 
+<dialog id="transfer">
+  <div class="dlg-head"><span class="t" id="t-title">copy / move</span></div>
+  <div class="dlg-body">
+    <div class="form">
+      <label>Target<br><select id="t-target"></select></label>
+      <label id="t-move-row"><input id="t-move" type="checkbox"> delete original (move)</label>
+      <div class="dim" id="t-note" style="font-size:12px" hidden>This skill is a symlink (plugin/marketplace): it can only be copied.</div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <span class="msg" id="t-msg"></span>
+    <button class="btn" id="t-cancel">Cancel</button>
+    <button class="btn primary" id="t-ok">Copy</button>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -616,6 +632,42 @@ document.getElementById('n-ok').onclick = async () => {
   }
 };
 
+/* ── copy / move ───────────────────────────────────────── */
+const transferDlg = document.getElementById('transfer');
+let transferItemData = null;
+function openTransfer(data) {
+  transferItemData = data;
+  document.getElementById('t-title').textContent = 'copy ' + data.what + ' · ' + data.label;
+  const cur = scopeOf(data);
+  const opts = ['global', ...knownProjects].filter((t) => scopeOf({ scope: t }) !== cur);
+  document.getElementById('t-target').innerHTML = opts.map((t) =>
+    '<option value="' + esc(t) + '">' + esc(t === 'global' ? 'global (~/.claude)' : t.split('\\').pop()) + '</option>').join('');
+  const move = document.getElementById('t-move');
+  move.checked = false;
+  move.disabled = !!data.isLink;
+  document.getElementById('t-note').hidden = !data.isLink;
+  const msg = document.getElementById('t-msg');
+  msg.textContent = ''; msg.className = 'msg';
+  transferDlg.showModal();
+}
+document.getElementById('t-cancel').onclick = () => transferDlg.close();
+document.getElementById('t-ok').onclick = async () => {
+  const msg = document.getElementById('t-msg');
+  try {
+    await post('/api/item/transfer', {
+      ...transferItemData,
+      target: document.getElementById('t-target').value,
+      deleteSource: document.getElementById('t-move').checked,
+    });
+    transferDlg.close();
+    toast(transferItemData.what + (document.getElementById('t-move').checked ? ' moved' : ' copied'));
+    refresh();
+  } catch (e) {
+    msg.textContent = e.message;
+    msg.className = 'msg bad';
+  }
+};
+
 // event-delegatie: elke actieknop draagt zijn data in data-attributen
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.act');
@@ -627,6 +679,7 @@ document.addEventListener('click', (e) => {
   else if (d.act === 'hookdel') confirmHookDelete(JSON.parse(d.hook));
   else if (d.act === 'reveal') post('/api/file/reveal', { path: d.path }).catch((err) => toast(err.message, true));
   else if (d.act === 'new') openCreate(d.what);
+  else if (d.act === 'transfer') openTransfer(JSON.parse(d.item));
   else if (d.act === 'period') { tokenPeriod = d.val; refresh(); }
   else if (d.act === 'copy') {
     navigator.clipboard.writeText(d.text).then(() => toast('copied: ' + d.text), () => toast('copy failed', true));
@@ -647,6 +700,9 @@ function actView(filePath, kind) {
 }
 function actDel(filePath, label) {
   return '<button class="act danger" data-act="del" data-path="' + esc(filePath) + '" data-label="' + esc(label) + '" title="delete">del</button>';
+}
+function actTransfer(item) {
+  return '<button class="act" data-act="transfer" data-item="' + esc(JSON.stringify(item)) + '" title="copy or move">copy</button>';
 }
 
 /* ── renderers ─────────────────────────────────────────── */
@@ -893,7 +949,7 @@ function renderAgents(data) {
       '<tr><td><span class="mono">' + esc(a.name) + '</span>' +
       (a.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(a.description) + '">' + esc(a.description) + '</div>' : '') +
       '</td><td><span class="tag" title="' + esc(a.scope) + '">' + esc(a.scope === 'global' ? 'global' : 'project') + '</span></td>' +
-      '<td class="acts">' + actView(a.path, 'agent') + actDel(a.path, a.name) + '</td></tr>'
+      '<td class="acts">' + actView(a.path, 'agent') + actTransfer({ what: 'agent', label: a.name, path: a.path, scope: a.scope }) + actDel(a.path, a.name) + '</td></tr>'
     ).join('') + '</table>';
 }
 function renderHooks(data) {
@@ -904,6 +960,7 @@ function renderHooks(data) {
       '<td class="mono muted ellipsis" title="' + esc(h.command) + '">' + esc(h.command) + '</td>' +
       '<td><span class="tag" title="' + esc(h.source) + '">' + esc(h.source === 'global' ? 'global' : 'project') + '</span></td>' +
       '<td class="acts">' + actView(h.settingsPath, 'settings.json') +
+      actTransfer({ what: 'hook', label: h.event, settingsPath: h.settingsPath, event: h.event, groupIndex: h.groupIndex, hookIndex: h.hookIndex, scope: h.source }) +
       '<button class="act danger" data-act="hookdel" data-hook="' + esc(JSON.stringify(h)) + '" title="delete hook">del</button>' +
       '</td></tr>'
     ).join('') + '</table>';
@@ -916,7 +973,7 @@ function renderSkills(data) {
       '<tr><td><span class="mono">' + esc(s.name) + '</span>' +
       (s.description ? '<div class="dim ellipsis" style="font-size:12px" title="' + esc(s.description) + '">' + esc(s.description) + '</div>' : '') +
       '</td><td><span class="tag" title="' + esc(s.scope || 'global') + '">' + esc(!s.scope || s.scope === 'global' ? 'global' : 'project') + '</span></td>' +
-      '<td class="acts">' + actView(s.skillFile, 'skill') + actDel(s.path, s.name) + '</td></tr>'
+      '<td class="acts">' + actView(s.skillFile, 'skill') + actTransfer({ what: 'skill', label: s.name, path: s.path, scope: s.scope, isLink: s.isLink }) + actDel(s.path, s.name) + '</td></tr>'
     ).join('') + '</table>';
   if (plugins.length) {
     html += '<div style="margin-top:10px">' + plugins.map((p) =>

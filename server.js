@@ -157,9 +157,34 @@ function createItem(body, roots) {
   throw new Error('unknown type: ' + what);
 }
 
+// Kopieert of verplaatst een agent, skill of hook naar globaal of een project.
+// Verplaatsen = kopiëren + bron verwijderen; een bestaand doel blokkeert altijd.
+function transferItem(body, roots) {
+  const what = String(body.what || '');
+  const target = body.target && body.target !== 'global' ? String(body.target) : null;
+  const base = target ? path.join(target, '.claude') : CLAUDE_DIR;
+  const deleteSource = !!body.deleteSource;
+  if (what === 'hook') {
+    const h = actions.readHook(body.settingsPath, String(body.event || ''), Number(body.groupIndex), Number(body.hookIndex), roots);
+    const saved = actions.addHook(path.join(base, 'settings.json'), h.event, h.matcher, h.command, roots);
+    if (deleteSource) actions.removeHook(body.settingsPath, h.event, Number(body.groupIndex), Number(body.hookIndex), roots);
+    return { transferred: saved };
+  }
+  const src = actions.assertAllowed(String(body.path || ''), roots);
+  const sub = { agent: 'agents', skill: 'skills' }[what];
+  if (!sub) throw new Error('unknown type: ' + what);
+  if (what === 'skill' && deleteSource && fs.lstatSync(src).isSymbolicLink()) {
+    throw new Error('this skill is a symlink (plugin/marketplace): copy it instead of moving');
+  }
+  const saved = actions.copyPath(src, path.join(base, sub, path.basename(src)), roots);
+  if (deleteSource) actions.deletePath(src, roots);
+  return { transferred: saved };
+}
+
 const ACTIONS = {
   '/api/session/stop': (body) => stopSession(Number(body.pid)),
   '/api/create': (body, roots) => createItem(body, roots),
+  '/api/item/transfer': (body, roots) => transferItem(body, roots),
   '/api/file/save': (body, roots) => ({ saved: actions.saveFile(body.path, String(body.content ?? ''), roots) }),
   '/api/file/delete': (body, roots) => ({ deleted: actions.deletePath(body.path, roots) }),
   '/api/file/reveal': (body, roots) => revealFile(body.path, roots),
